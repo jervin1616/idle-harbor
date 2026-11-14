@@ -1,18 +1,22 @@
 import { CONFIG, StationId, stationById } from './config';
-import { GameState, incomePerCycle, startCycle, tap, upgradeCost } from './game';
+import { GameState, fleetTiers, incomePerCycle, startCycle, tap, upgradeCost } from './game';
 import { fmt } from './format';
 
 // Procedural cartoon harbor drawn on a canvas (no image files needed).
 export const SW = 360;
-import boat0 from './assets/boats/boat0.png';
-import boat1 from './assets/boats/boat1.png';
-import boat2 from './assets/boats/boat2.png';
-import shipUrl from './assets/boats/ship.png';
 import raftUrl from './assets/boats/raft.png';
+import f1 from './assets/boats/fleet1.png';
+import f2 from './assets/boats/fleet2.png';
+import f3 from './assets/boats/fleet3.png';
+import f4 from './assets/boats/fleet4.png';
+import f5 from './assets/boats/fleet5.png';
+import f6 from './assets/boats/fleet6.png';
+import f7 from './assets/boats/fleet7.png';
 const loadImg = (u: string) => { const i = new Image(); i.src = u; return i; };
-const sprites = [boat0, boat1, boat2].map(loadImg);
-const shipImg = loadImg(shipUrl);
+const fleetSprites = [f1, f2, f3, f4, f5, f6, f7].map(loadImg);   // index = tier - 1
 const raftImg = loadImg(raftUrl);
+// Where the fleet's three boats float (x, y in sea coordinates). Listed back to front.
+const BOAT_SPOTS: [number, number][] = [[292, 128], [222, 164], [306, 198]];
 const BASE_SH = 340;
 const INK = '#2d1e3e';
 const WATER_Y = 112, SAND_Y = 226, BASE_Y = 314, DECK_Y = 196;
@@ -141,7 +145,7 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
   const splashes: Splash[] = [];
   let lastTap = -10;
   const prev: Record<StationId, { p: number; run: boolean }> = {
-    dock: { p: 0, run: false }, shed: { p: 0, run: false }, market: { p: 0, run: false },
+    dock: { p: 0, run: false }, shed: { p: 0, run: false }, market: { p: 0, run: false }, fleet: { p: 0, run: false },
   };
 
   function fit() { ctx.setTransform(0.5, 0, 0, 0.5, 0, 0); }
@@ -157,6 +161,13 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
     const hit: [StationId, number, number, number, number][] = [
       ['shed', SHED.x - 6, 226, SHED.w + 12, 100], ['market', MARKET.x - 6, 226, MARKET.w + 12, 100], ['dock', -6, 146, 56, 54],
     ];
+    const ys = y + dy;   // y on the whole screen, for the boats' sea layer
+    const fleetLevel = s.stations.fleet.level;
+    const spots = fleetLevel < 1 ? 1 : fleetTiers(fleetLevel).filter(v => v > 0).length;
+    for (let k = 0; k < spots; k++) {
+      const [bx, by] = BOAT_SPOTS[k];
+      if (Math.abs(x - bx) < 40 && ys > by + boatOff() - 60 && ys < by + boatOff() + 14) { startCycle(s, 'fleet'); onOpen('fleet'); return; }
+    }
     for (const [id, rx, ry, rw, rh] of hit) {
       if (inRect(x, y, rx, ry, rw, rh)) { startCycle(s, id); onOpen(id); return; }
     }
@@ -166,6 +177,8 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
     pops.push({ x, y, t0: now, text: `+${CONFIG.tapValue}` });
     splashes.push({ x, y: Math.min(Math.max(y, WATER_Y + 12 - (dy - dyTop)), SAND_Y - 8), t0: now });
   });
+
+  const boatOff = () => dyTop + (dy - dyTop) * 0.35;   // how far the sea layer with the boats is shifted down
 
   const phase = (id: StationId) => {
     const st = s.stations[id]; const cfg = CONFIG.stations.find(x => x.id === id)!;
@@ -182,6 +195,7 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
         const amt = `+${fmt(incomePerCycle(cfg.id, st.level))}`;
         if (cfg.id === 'dock') pops.push({ x: 150, y: 176, t0: t, text: amt });
         if (cfg.id === 'shed') pops.push({ x: SHED.x + SHED.w / 2, y: 262, t0: t, text: amt });
+        if (cfg.id === 'fleet') pops.push({ x: BOAT_SPOTS[0][0], y: BOAT_SPOTS[0][1] + boatOff() - dy - 36, t0: t, text: amt });
         if (cfg.id === 'market') pops.push({ x: MARKET.x + MARKET.w / 2, y: 270, t0: t, text: amt });
       }
       pv.p = st.progress; pv.run = st.running;
@@ -281,27 +295,27 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
     branch(-6, -10, 1, 44, 2);
   }
 
-  function boat(c: Ctx, cx: number, cy: number, _k: number, t: number, i: number, p: number) {
-    const spr = sprites[i % 3];
+  // One fleet boat. tier 1-7 picks the sprite; ghost = the faded "for sale" boat shown before the fleet is built.
+  function boat(c: Ctx, cx: number, cy: number, tier: number, t: number, i: number, p: number, ghost = false) {
+    const spr = fleetSprites[tier - 1];
     const by = cy + Math.round(Math.sin(t * 1.6 + i * 2) * 1.2) * 2;   // whole pixels only, so the pixel art stays crisp
-    c.beginPath(); c.ellipse(cx, cy + 4, 34, 3.2, 0, 0, TAU); c.fillStyle = 'rgba(255,225,215,.5)'; c.fill();
-    // fisherman first, so the boat's near side covers his legs
-    person(c, cx + (i === 0 ? -2 : 16), by - 8, 0.66, { shirt: ['#f28c4a', '#58a85a', '#4fb3d6'][i % 3], hat: 'straw', arm: -0.7 });
+    const big = tier >= 6;
+    c.beginPath(); c.ellipse(cx, cy + 4, big ? 44 : 34, 3.2, 0, 0, TAU); c.fillStyle = 'rgba(255,225,215,.5)'; c.fill();
+    if (!ghost && !big) person(c, cx + (tier === 1 ? -2 : 16), by - 8, 0.66, { shirt: ['#f28c4a', '#58a85a', '#4fb3d6'][i % 3], hat: 'straw', arm: -0.7 });
+    if (!ghost && big) {   // deckhands on the bigger ships
+      person(c, cx - 22, by - 14, 0.6, { shirt: '#f28c4a', hat: 'straw', arm: -0.7 });
+      person(c, cx + 20, by - 18, 0.6, { shirt: '#4fb3d6', hat: 'cap', hatColor: '#e8553d', arm: 0.5 });
+    }
     if (spr.complete && spr.naturalWidth) {
+      c.save(); if (ghost) c.globalAlpha = 0.8;
       c.imageSmoothingEnabled = false;
       c.drawImage(spr, Math.round(cx - spr.naturalWidth), by - spr.naturalHeight * 2 + 6, spr.naturalWidth * 2, spr.naturalHeight * 2);
+      c.restore();
     }
-    if (p >= 0.78) {
+    if (!ghost && p >= 0.78) {
       const u = (p - 0.78) / 0.22;
       fish(c, cx - 36 + u * 8, cy + 8 - Math.sin(u * Math.PI) * 20, -(u - 0.5) * 2.4, 0.8, '#ff9f43');
     }
-  }
-
-  function bigShip(c: Ctx, t: number) {
-    if (!(shipImg.complete && shipImg.naturalWidth)) return;
-    const y = WATER_Y - (dy - dyTop) * 0.35 + 30 + Math.round(Math.sin(t * 0.8) * 1) * 2;   // sits just below the horizon
-    c.imageSmoothingEnabled = false;
-    c.drawImage(shipImg, 70, y - shipImg.naturalHeight * 2, shipImg.naturalWidth * 2, shipImg.naturalHeight * 2);
   }
 
   function pier(c: Ctx, t: number, p: number) {
@@ -490,6 +504,12 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
     c.beginPath(); c.ellipse(120, y, 6, 2.5, 0, 0, TAU); c.lineWidth = 1.4; c.strokeStyle = '#7a4b2a'; c.stroke();
   }
 
+  function lockMini(c: Ctx, cx: number, cy: number) {
+    c.beginPath(); c.arc(cx, cy - 6, 6, Math.PI, 0); c.lineWidth = 3; c.strokeStyle = INK; c.stroke();
+    rr(c, cx - 8, cy - 6, 16, 12, 3); paint(c, '#ffd75e', 2);
+    dot(c, cx, cy, 1.8, INK);
+  }
+
   function lockOverlay(c: Ctx, x: number, y: number, w: number, h: number) {
     rr(c, x, y, w, h, 6); c.fillStyle = 'rgba(255,241,201,.62)'; c.fill(); c.lineWidth = 1.5; c.setLineDash([4, 3]); c.strokeStyle = '#8a4f7d'; c.stroke(); c.setLineDash([]);
     const cx = x + w / 2, cy = y + h / 2;
@@ -520,11 +540,11 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
     const pd = phase('dock');
     c.fillStyle = '#5b3a6b'; c.fillRect(0, 0, SW, dyTop + 2);
     c.save(); c.translate(0, dyTop); sky(c, t); sea(c, t, dy - dyTop); c.restore();
-    c.save(); c.translate(0, dyTop + (dy - dyTop) * 0.35);
-    if (s.stations.dock.level >= CONFIG.maxLevel) bigShip(c, t);
-    const boats = Math.min(3, Math.ceil(s.stations.dock.level / 4));
-    const spots = [[262, 150, 1], [316, 180, 1.05], [226, 178, 0.95]];
-    for (let i = 0; i < boats; i++) boat(c, spots[i][0], spots[i][1], spots[i][2], t, i, pd);
+    c.save(); c.translate(0, boatOff());
+    const fl = s.stations.fleet.level, pf = phase('fleet');
+    if (fl < 1) { boat(c, BOAT_SPOTS[0][0], BOAT_SPOTS[0][1], 1, t, 0, -1, true); lockMini(c, BOAT_SPOTS[0][0] + 2, BOAT_SPOTS[0][1] - 16); }
+    else fleetTiers(fl).forEach((tier, i) => { if (tier > 0) boat(c, BOAT_SPOTS[i][0], BOAT_SPOTS[i][1], tier, t, i, pf); });
+    badge(c, 'fleet', BOAT_SPOTS[0][0], BOAT_SPOTS[0][1] - (fl >= 5 ? 70 : fl >= 3 ? 56 : 30), t);
     c.restore();
     c.save(); c.translate(0, dy);
     raft(c, t); pier(c, t, pd); land(c, t); props(c, t);

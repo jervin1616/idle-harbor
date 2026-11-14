@@ -1,4 +1,4 @@
-import { CONFIG, StationId, stationById } from './config';
+import { CONFIG, FLEET_TIERS, StationId, stationById } from './config';
 
 // Numbers are plain doubles (safe to ~1e308). Prestige in milestone 2 may need a
 // big-number library; all math is kept in this file so that swap stays easy.
@@ -22,7 +22,7 @@ export function newState(now = Date.now()): GameState {
   const blank = (): StationState => ({ level: 0, hasManager: false, progress: 0, running: false });
   return {
     version: 1, coins: 0, totalEarned: 0, lastSaved: now,
-    stations: { dock: blank(), shed: blank(), market: blank() },
+    stations: { dock: blank(), shed: blank(), market: blank(), fleet: blank() },
   };
 }
 
@@ -116,4 +116,9 @@ export function applyOffline(s: GameState, awaySeconds: number) {
   }
   const earned = credited > 0 ? tick(s, credited) : 0;
   return { credited, away: awaySeconds, earned };
+}
+
+/** Tier (1-7, 0 = no boat) of each of the three boats at a given fleet level. */
+export function fleetTiers(level: number): number[] {
+  return [0, 1, 2].map(i => Math.max(0, Math.min(FLEET_TIERS.length, level - 3 * i)));
 }

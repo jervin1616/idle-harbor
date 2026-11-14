@@ -1,4 +1,4 @@
-import { CONFIG, StationId, stationById } from './config';
+import { CONFIG, FLEET_TIERS, StationId, stationById } from './config';
 import {
   GameState, buyManager, buyUpgrade, incomePerCycle, incomePerSecond, upgradeCost,
 } from './game';
@@ -13,7 +13,7 @@ export function mountUI(root: HTMLElement, s: GameState) {
       <canvas id="scene"></canvas>
       <div class="hud"><div class="pill"><i class="coin"></i><span id="coins">0</span></div>
         <div class="rate" id="rate"></div></div>
-      <div class="hint" id="hint">Tap the sea to fish · tap a building to upgrade it</div>
+      <div class="hint" id="hint">Tap the sea to fish · tap a building or boat to upgrade it</div>
       <section class="sheet hidden" id="sheet">
         <button class="close" id="close" aria-label="Close">✕</button>
         <div class="top"><span class="emoji" id="sicon"></span>
@@ -57,11 +57,12 @@ export function mountUI(root: HTMLElement, s: GameState) {
     if (!openId) return;
     const c = stationById(openId), st = s.stations[openId];
     stitle.textContent = `${c.name} · Lv ${st.level}/${CONFIG.maxLevel}`;
+    const boatNote = openId === 'fleet' ? (st.level < 1 ? ` · ${FLEET_TIERS[0]}` : st.level < FLEET_TIERS.length ? ` · ${FLEET_TIERS[Math.min(st.level, 7) - 1]} → ${FLEET_TIERS[st.level]}` : ` · ${FLEET_TIERS[6]}`) : '';
     const maxed = st.level >= CONFIG.maxLevel;
-    if (st.level < 1) sinfo.textContent = 'Not built yet';
+    if (st.level < 1) sinfo.textContent = `Not built yet${boatNote}`;
     else {
       const now = incomePerCycle(openId, st.level), next = maxed ? now : incomePerCycle(openId, st.level + 1);
-      sinfo.textContent = `${fmt(now)} per ${c.cycleSeconds}s${maxed ? '' : ` → ${fmt(next)}`}${st.hasManager ? '' : ' · hand-run'}`;
+      sinfo.textContent = `${fmt(now)}/${c.cycleSeconds}s${maxed ? '' : ` → ${fmt(next)}`}${st.hasManager ? '' : ' (by hand)'}${boatNote}`;
     }
     const cost = maxed ? 0 : upgradeCost(openId, st.level);
     upLabel.innerHTML = maxed ? 'MAX' : `${st.level < 1 ? 'Build' : 'Upgrade'} <i class="coin sm"></i>${fmt(cost)}`;

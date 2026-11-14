@@ -7,9 +7,10 @@ const ICONS: Record<string, string[]> = {
   fish: ['...kkkk.....', '.kkbbbbk..kk', 'kbbbbbbbkkbk', 'kbwkbbbbbbbk', 'kbbbbbbbkkbk', '.kkbbbbk..kk', '...kkkk.....'],
   basket: ['...kkkk...', '..k....k..', '.kkkkkkkk.', 'kssnssnssk', 'knsnsnsnnk', 'ksnssnssnk', '.knsnssnk.', '..kkkkkk..'],
   rod: ['........kk', '.......kn.', '......kn..', '.....kn..k', '....kn...k', '...kn....k', '..kn.....k', '.kn......k', 'kn.......r', 'k........r'],
+  boat: ['......k.....', '......kk....', '......kwk...', '......kwwk..', 'kkkkkkkkkkk.', '.knnnnnnnnk.', '..kknnnnkk..', '....kkkk....'],
   hat: ['...kkkk...', '..kyyyyk..', '.kyywyyyk.', '.kyyyyyyk.', 'kkkkkkkkkk', 'kyyyyyyyyk', '.kkkkkkkk.'],
 };
-export const stationIcon: Record<string, string> = { dock: 'rod', shed: 'fish', market: 'basket' };
+export const stationIcon: Record<string, string> = { dock: 'rod', shed: 'fish', market: 'basket', fleet: 'boat' };
 
 export function makeIcon(name: string, cls = 'ico'): HTMLCanvasElement {
   const rows = ICONS[name];

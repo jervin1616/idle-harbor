@@ -22,12 +22,14 @@ def shrink(im, k):
     rgb.putalpha(a)
     return rgb
 
+# Fleet tiers 1-7 (rowboat -> grand schooner), written as fleet1.png ... fleet7.png
+BOAT_TIERS = {(0, 0): 1, (1, 0): 2, (1, 1): 3, (1, 2): 4, (2, 2): 5}
 for r, c, im in cells(src + '/Boat.png', 3, 3):
-    if r == 1:  # row with crates: plain, mast, sail
-        shrink(im, 0.30).save(f'{out}boat{c}.png')
+    if (r, c) in BOAT_TIERS:
+        shrink(im, 0.30).save(f"{out}fleet{BOAT_TIERS[(r, c)]}.png")
 for r, c, im in cells(src + '/Ship.png', 3, 1):
-    if c == 2:
-        shrink(im, 0.20).save(f'{out}ship.png')
+    if c in (1, 2):
+        shrink(im, 0.24).save(f"{out}fleet{5 + c}.png")
 for r, c, im in cells(src + '/Raft.png', 3, 2):
-    if r == 1 and c == 0:  # raft with barrel and net
+    if r == 1 and c == 0:  # raft with barrel and net (scenery)
         shrink(im, 0.30).save(f'{out}raft.png')
