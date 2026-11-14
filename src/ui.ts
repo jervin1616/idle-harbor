@@ -1,6 +1,6 @@
-import { CONFIG, FLEET_TIERS, FLEET_TIER_LEVELS, StationId, stationById } from './config';
+import { CONFIG, OUTFITS, RODS, FLEET_TIERS, FLEET_TIER_LEVELS, StationId, stationById } from './config';
 import {
-  GameState, claimDaily, dailyReady, dailyReward, buyManager, buyUpgrade, costForLevels, cycleIncome, incomePerSecond, maxAffordable, nextMilestone, prestigeGain, upgradeCost,
+  GameState, canPay, claimDaily, dailyReady, dailyReward, buyManager, buyUpgrade, costForLevels, cycleIncome, incomePerSecond, maxAffordable, nextMilestone, prestigeGain, upgradeCost,
 } from './game';
 import { Achievement } from './achievements';
 import { fmt, fmtDuration } from './format';
@@ -9,6 +9,7 @@ import { createScene } from './scene';
 import { makeIcon, stationIcon } from './icons';
 import { mountMenu } from './menu';
 import { sfx } from './audio';
+import { setPurchasePresenter } from './payments';
 import { setAdPresenter, showRewarded } from './ads';
 
 export function mountUI(root: HTMLElement, s: GameState) {
@@ -16,6 +17,7 @@ export function mountUI(root: HTMLElement, s: GameState) {
     <div class="stage">
       <canvas id="scene"></canvas>
       <div class="hud"><div class="pill"><i class="coin"></i><span id="coins">0</span></div>
+        <div class="gempill"><i class="gemi"></i><span id="gems">0</span></div>
         <div class="rate" id="rate"></div></div>
       <button class="menubtn" id="menubtn" aria-label="Menu"><span id="mico"></span><i class="dot hidden" id="mdot"></i></button>
       <div class="side">
@@ -45,7 +47,7 @@ export function mountUI(root: HTMLElement, s: GameState) {
   const upLabel = sup.querySelector('span')!;
   const mgLabel = document.createElement('span');
   smgr.append(makeIcon('hat', 'ico small'), mgLabel);
-  $('mico').appendChild(makeIcon('trophy', 'ico menu-ico'));
+  $('mico').appendChild(makeIcon('menu', 'ico menu-ico'));
   const icons = new Map<StationId, HTMLCanvasElement>();
   for (const c of CONFIG.stations) icons.set(c.id, makeIcon(stationIcon[c.id], 'ico big'));
   const amtBtns = [...root.querySelectorAll<HTMLButtonElement>('#amts button')];
@@ -71,7 +73,7 @@ export function mountUI(root: HTMLElement, s: GameState) {
 
   let unseen = 0;
   const menu = mountMenu($('menu'), s, { toast, closed: () => { unseen = 0; } });
-  $('menubtn').addEventListener('click', () => { open(null); unseen = 0; menu.open('badges'); sfx.tap(); });
+  $('menubtn').addEventListener('click', () => { open(null); unseen = 0; menu.open('gear'); sfx.tap(); });
 
   $('bico').appendChild(makeIcon('bolt', 'ico menu-ico'));
   $('cico').appendChild(makeIcon('chest', 'ico menu-ico'));
@@ -87,6 +89,14 @@ export function mountUI(root: HTMLElement, s: GameState) {
     });
   }
   setAdPresenter(playAd);
+  // Placeholder checkout: swapped for Google Play Billing later. Nothing is charged in test mode.
+  setPurchasePresenter((name, price) => new Promise(res => {
+    adscreen.classList.remove('hidden');
+    adscreen.innerHTML = `<div class="card"><p class="small">TEST PURCHASE</p><h2>${name}</h2><p class="big">${price}</p><p class="small">Nothing is charged. Real payments are added later.</p><button id="pok">Confirm</button><button id="pno" class="alt">Cancel</button></div>`;
+    const done = (ok: boolean) => { adscreen.classList.add('hidden'); res(ok); };
+    adscreen.querySelector('#pok')!.addEventListener('click', () => done(true));
+    adscreen.querySelector('#pno')!.addEventListener('click', () => done(false));
+  }));
   $('boostbtn').addEventListener('click', async () => {
     if (s.boostLeft > 0) { toast(`<b>Boost running</b><br><span class="small">x${CONFIG.boostMultiplier} income, ${fmtDuration(s.boostLeft)} left</span>`); return; }
     if (await showRewarded()) { s.boostLeft = CONFIG.boostSeconds; s.adsWatched++; sfx.buy(); save(s); toast(`<b>x${CONFIG.boostMultiplier} income</b> for ${CONFIG.boostSeconds / 60} minutes!`); }
@@ -104,12 +114,12 @@ export function mountUI(root: HTMLElement, s: GameState) {
   });
 
   const scene = createScene($<HTMLCanvasElement>('scene'), s, id => { open(id); });
-  const coinsEl = $('coins'), rateEl = $('rate'), hint = $('hint'), dot = $('mdot'), btxt = $('btxt'), chestbtn = $('chestbtn'), boostbtn = $('boostbtn');
+  const coinsEl = $('coins'), rateEl = $('rate'), hint = $('hint'), gemsEl = $('gems'), dot = $('mdot'), btxt = $('btxt'), chestbtn = $('chestbtn'), boostbtn = $('boostbtn');
   let lastMenuRender = 0;
 
   function render(now: number) {
     scene.draw(now);
-    coinsEl.textContent = fmt(s.coins);
+    coinsEl.textContent = fmt(s.coins); gemsEl.textContent = String(s.gems);
     hint.classList.toggle('hidden', s.totalEarned > 40);
     let total = 0;
     for (const c of CONFIG.stations) total += s.stations[c.id].hasManager ? incomePerSecond(s, c.id) : 0;
@@ -119,7 +129,9 @@ export function mountUI(root: HTMLElement, s: GameState) {
     btxt.textContent = s.boostLeft > 0 ? fmtDuration(Math.ceil(s.boostLeft)) : 'x2';
     boostbtn.classList.toggle('on', s.boostLeft > 0);
     chestbtn.classList.toggle('hidden', !dailyReady(s));
-    dot.classList.toggle('hidden', !(unseen > 0 || gain >= Math.max(1, Math.floor(s.pearls * 0.5))));
+    const nr = RODS[s.rodTier + 1], no = OUTFITS[s.outfitTier + 1];
+    const gearReady = (nr && canPay(s, nr.cost, nr.gems)) || (no && canPay(s, no.cost, no.gems));
+    dot.classList.toggle('hidden', !(unseen > 0 || gearReady || gain >= Math.max(1, Math.floor(s.pearls * 0.5))));
     if (menu.isOpen() && now - lastMenuRender > 0.4) { lastMenuRender = now; menu.render(); }
     if (!openId) return;
 
@@ -163,7 +175,7 @@ export function mountUI(root: HTMLElement, s: GameState) {
   function badgeUnlocked(list: Achievement[]) {
     if (!list.length) return;
     unseen += list.length; sfx.badge();
-    for (const a of list) toast(`<b>Badge: ${a.name}</b><br><span class="small">${a.desc} · +${Math.round(CONFIG.achievementBonus * 100)}% income</span>`);
+    for (const a of list) toast(`<b>Badge: ${a.name}</b><br><span class="small">${a.desc}<br>+${Math.round(CONFIG.achievementBonus * 100)}% income · +${a.gems} gems</span>`);
   }
 
   return { render, showWelcome, toast, badgeUnlocked };

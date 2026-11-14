@@ -1,13 +1,16 @@
 import { ACHIEVEMENTS, BADGE_BONUS_TEXT, isUnlocked, progressOf } from './achievements';
-import { CONFIG } from './config';
-import { GameState, badgeMultiplier, newState, pearlMultiplier, prestigeGain, setSail } from './game';
+import { CONFIG, OUTFITS, RODS } from './config';
+import { DECOR, DecorKind, PLANK_SKINS, SAND_SKINS } from './decor';
+import { PRODUCTS, grantProduct, packCoins } from './shop';
+import { purchase, PAYMENTS } from './payments';
+import { GameState, badgeMultiplier, buyDecor, canPay, buyOutfit, buyRod, equipSkin, newState, ownsDecor, pearlMultiplier, prestigeGain, setSail, tapValue } from './game';
 import { fmt, fmtDuration } from './format';
 import { exportSave, importSave, save, wipe } from './save';
 import { makeIcon } from './icons';
 import { sfx } from './audio';
 
-type Tab = 'badges' | 'stats' | 'sail' | 'settings';
-const TABS: [Tab, string][] = [['badges', 'Badges'], ['stats', 'Stats'], ['sail', 'Sail'], ['settings', 'Settings']];
+type Tab = 'gear' | 'decor' | 'shop' | 'badges' | 'stats' | 'sail' | 'settings';
+const TABS: [Tab, string][] = [['gear', 'Gear'], ['decor', 'Decor'], ['shop', 'Shop'], ['badges', 'Badges'], ['stats', 'Stats'], ['sail', 'Sail'], ['settings', 'Settings']];
 
 export function mountMenu(host: HTMLElement, s: GameState, hooks: { toast: (html: string) => void; closed: () => void }) {
   host.innerHTML = `
@@ -15,6 +18,14 @@ export function mountMenu(host: HTMLElement, s: GameState, hooks: { toast: (html
       <button class="close" id="mclose" aria-label="Close">✕</button>
       <div class="tabs" id="tabs">${TABS.map(([id, label]) => `<button data-tab="${id}">${label}</button>`).join('')}</div>
       <div class="mbody">
+        <div class="pane" data-pane="gear">
+          <div class="phead" id="tapinfo"></div>
+          <div class="gear"><div class="gtitle">Fishing rod</div><b id="rodname"></b><div class="small" id="roddesc"></div><button class="big-btn" id="rodbtn"></button></div>
+          <div class="gear"><div class="gtitle">Outfit</div><b id="fitname"></b><div class="small" id="fitdesc"></div><button class="big-btn" id="fitbtn"></button></div>
+          <p class="small">Better gear makes every tap worth more. It also changes how your fisherman looks.</p>
+        </div>
+        <div class="pane" data-pane="shop"><div class="phead" id="shead"></div><div id="shoplist"></div><p class="small" id="shopnote"></p></div>
+        <div class="pane" data-pane="decor"><div class="phead" id="dhead"></div><div id="dlist"></div></div>
         <div class="pane" data-pane="badges"><div class="phead" id="bhead"></div><div id="blist"></div></div>
         <div class="pane" data-pane="stats"><div id="slist" class="stats"></div></div>
         <div class="pane" data-pane="sail">
@@ -40,7 +51,7 @@ export function mountMenu(host: HTMLElement, s: GameState, hooks: { toast: (html
   const $ = <T extends HTMLElement>(id: string) => host.querySelector<T>('#' + id)!;
   const panes = [...host.querySelectorAll<HTMLElement>('.pane')];
   const tabBtns = [...host.querySelectorAll<HTMLButtonElement>('#tabs button')];
-  let tab: Tab = 'badges';
+  let tab: Tab = 'gear';
   let confirmSail = 0, confirmReset = 0;
 
   // ----- badge rows (built once, updated in render) -----
@@ -55,6 +66,56 @@ export function mountMenu(host: HTMLElement, s: GameState, hooks: { toast: (html
     rows.set(a.id, { row, icon: row.querySelector('.bicon')!, bar: row.querySelector('.bb')!, txt: row.querySelector('.bt')!, done: null });
   }
 
+  // ----- gear -----
+  $('rodbtn').addEventListener('click', () => { if (buyRod(s)) { sfx.buy(); save(s); render(); } });
+  $('fitbtn').addEventListener('click', () => { if (buyOutfit(s)) { sfx.buy(); save(s); render(); } });
+
+  // ----- decor shop rows (built once, updated in render) -----
+  const KIND_TITLES: Record<DecorKind, string> = { beach: 'Beach', boardwalk: 'Boardwalk', sand: 'Sand color', planks: 'Boardwalk planks' };
+  const drows = new Map<string, { btn: HTMLButtonElement; cost: HTMLElement }>();
+  let lastKind = '';
+  for (const d of DECOR) {
+    const dlist = $('dlist');
+    if (d.kind !== lastKind) { lastKind = d.kind; const h = document.createElement('div'); h.className = 'grp'; h.textContent = KIND_TITLES[d.kind]; dlist.appendChild(h); }
+    const row = document.createElement('div'); row.className = 'drow';
+    row.innerHTML = `<div class="dmeta"><b>${d.name}</b><div class="small">${d.desc}</div></div><button class="dbtn"></button>`;
+    dlist.appendChild(row);
+    const btn = row.querySelector<HTMLButtonElement>('.dbtn')!;
+    btn.addEventListener('click', () => {
+      const skin = d.kind === 'sand' || d.kind === 'planks';
+      if (ownsDecor(s, d.id)) { if (skin && equipSkin(s, d.kind as 'sand' | 'planks', d.skin!)) { sfx.tap(); save(s); render(); } return; }
+      if (buyDecor(s, d.id)) { sfx.buy(); save(s); render(); }
+    });
+    drows.set(d.id, { btn, cost: btn });
+  }
+  // default skins can be re-selected too
+  for (const kind of ['sand', 'planks'] as const) {
+    const first = [...$('dlist').querySelectorAll('.grp')].find(g => g.textContent === KIND_TITLES[kind])!;
+    const row = document.createElement('div'); row.className = 'drow';
+    row.innerHTML = `<div class="dmeta"><b>${kind === 'sand' ? SAND_SKINS[0].name : PLANK_SKINS[0].name}</b><div class="small">The original look</div></div><button class="dbtn"></button>`;
+    first.after(row);
+    const btn = row.querySelector<HTMLButtonElement>('.dbtn')!;
+    btn.addEventListener('click', () => { if (equipSkin(s, kind, 0)) { sfx.tap(); save(s); render(); } });
+    drows.set(`default_${kind}`, { btn, cost: btn });
+  }
+
+  // ----- shop rows (built once, updated in render) -----
+  const prows = new Map<string, HTMLElement>();
+  const slist = $('shoplist'); let lastPk = '';
+  for (const p of PRODUCTS) {
+    if (p.kind !== lastPk) { lastPk = p.kind; const h = document.createElement('div'); h.className = 'grp'; h.textContent = p.kind === 'coins' ? 'Coins' : p.kind === 'gems' ? 'Gems' : 'Pass'; slist.appendChild(h); }
+    const row = document.createElement('div'); row.className = 'drow';
+    row.innerHTML = `<div class="dmeta"><b>${p.name}</b><div class="small"></div></div><button class="dbtn price">${p.price}</button>`;
+    slist.appendChild(row);
+    prows.set(p.id, row.querySelector('.small') as HTMLElement);
+    row.querySelector('button')!.addEventListener('click', async () => {
+      if (p.kind === 'pass' && s.captainPass) return;
+      if (!(await purchase(p.name, p.price))) return;
+      const what = grantProduct(s, p); sfx.badge(); save(s); hooks.toast(`<b>${p.name}</b><br><span class="small">${what}</span>`); render();
+    });
+  }
+
+  const costHtml = (coins: number, gems = 0) => [coins > 0 ? `<i class="coin sm"></i>${fmt(coins)}` : '', gems > 0 ? `<i class="gemi sm"></i>${gems}` : ''].filter(Boolean).join(' ');
   const fmtVal = (id: string, n: number) => (id.startsWith('play') ? fmtDuration(n) : fmt(n));
   const setTab = (t: Tab) => { tab = t; tabBtns.forEach(b => b.classList.toggle('on', b.dataset.tab === t)); panes.forEach(p => p.classList.toggle('hidden', p.dataset.pane !== t)); render(); };
   tabBtns.forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab as Tab)));
@@ -89,7 +150,35 @@ export function mountMenu(host: HTMLElement, s: GameState, hooks: { toast: (html
 
   function render() {
     if (host.classList.contains('hidden')) return;
-    if (tab === 'badges') {
+    if (tab === 'gear') {
+      $('tapinfo').innerHTML = `Each tap earns <b>${fmt(tapValue(s))}</b> coins`;
+      const gearCard = (list: { name: string; cost: number; gems?: number; mult: number }[], tier: number, nameEl: string, descEl: string, btnEl: string) => {
+        const cur = list[tier], next = list[tier + 1];
+        $(nameEl).textContent = `${cur.name} (x${cur.mult} per tap)`;
+        $(descEl).textContent = next ? `Next: ${next.name}, x${next.mult} per tap` : 'Best in the world. Nothing left to buy!';
+        const b = $<HTMLButtonElement>(btnEl);
+        b.disabled = !next || !canPay(s, next.cost, (next as { gems?: number }).gems);
+        b.innerHTML = next ? `Buy ${costHtml(next.cost, (next as { gems?: number }).gems)}` : 'MAX';
+      };
+      gearCard(RODS, s.rodTier, 'rodname', 'roddesc', 'rodbtn');
+      gearCard(OUTFITS, s.outfitTier, 'fitname', 'fitdesc', 'fitbtn');
+    } else if (tab === 'shop') {
+      $('shead').innerHTML = `You have <b>${fmt(s.coins)}</b> coins and <b>${s.gems}</b> gems`;
+      for (const p of PRODUCTS) {
+        const el = prows.get(p.id)!;
+        el.textContent = p.kind === 'coins' ? `+${fmt(packCoins(s, p))} coins (${p.hours! < 1 ? Math.round(p.hours! * 60) + ' min' : p.hours + ' h'} of your income)` : p.kind === 'gems' ? `+${p.gems} gems for gear and cosmetics` : s.captainPass ? 'Active: x2 income forever' : 'x2 income forever, plus 100 gems';
+        const btn = el.parentElement!.parentElement!.querySelector('button')!; if (p.kind === 'pass') { btn.disabled = s.captainPass; btn.textContent = s.captainPass ? 'Owned ✓' : p.price; }
+      }
+      $('shopnote').textContent = PAYMENTS.testMode ? 'TEST MODE: nothing is charged and real payments are not connected yet.' : 'Purchases are processed by Google Play.';
+    } else if (tab === 'decor') {
+      $('dhead').innerHTML = `<b>${s.decor.length}/${DECOR.length} owned</b> <span class="small">Cosmetics only. They never change your income.</span>`;
+      for (const d of DECOR) {
+        const r = drows.get(d.id)!, owned = ownsDecor(s, d.id), skin = d.kind === 'sand' || d.kind === 'planks';
+        if (!skin) { r.btn.disabled = owned || !canPay(s, d.cost, d.gems); r.btn.className = 'dbtn' + (owned ? ' own' : ''); r.btn.innerHTML = owned ? 'Placed ✓' : costHtml(d.cost, d.gems); }
+        else { const inUse = s.skins[d.kind as 'sand' | 'planks'] === d.skin; r.btn.disabled = inUse || (!owned && !canPay(s, d.cost, d.gems)); r.btn.className = 'dbtn' + (inUse ? ' own' : ''); r.btn.innerHTML = inUse ? 'In use ✓' : owned ? 'Use' : costHtml(d.cost, d.gems); }
+      }
+      for (const kind of ['sand', 'planks'] as const) { const r = drows.get(`default_${kind}`)!, inUse = s.skins[kind] === 0; r.btn.disabled = inUse; r.btn.className = 'dbtn' + (inUse ? ' own' : ''); r.btn.textContent = inUse ? 'In use ✓' : 'Use'; }
+    } else if (tab === 'badges') {
       $('bhead').innerHTML = `<b>${s.achievements.length}/${ACHIEVEMENTS.length} badges</b> · income x${badgeMultiplier(s).toFixed(2)} <span class="small">(${BADGE_BONUS_TEXT})</span>`;
       for (const a of ACHIEVEMENTS) {
         const r = rows.get(a.id)!, done = isUnlocked(s, a);
@@ -99,10 +188,10 @@ export function mountMenu(host: HTMLElement, s: GameState, hooks: { toast: (html
       }
     } else if (tab === 'stats') {
       const lines: [string, string][] = [
-        ['Taps', fmt(s.taps)], ['Fish caught', fmt(s.fishCaught)], ['Coins earned (all time)', fmt(s.totalEarned)],
+        ['Gems', String(s.gems)], ['Taps', fmt(s.taps)], ['Fish caught', fmt(s.fishCaught)], ['Coins earned (all time)', fmt(s.totalEarned)],
         ['Coins earned (this voyage)', fmt(s.runEarned)], ['Voyages completed', String(s.prestiges)], ['Pearls', String(s.pearls)],
         ['Time in the harbor', fmtDuration(s.playSeconds)], ['Badges', `${s.achievements.length}/${ACHIEVEMENTS.length}`],
-        ['Total income bonus', `x${(pearlMultiplier(s) * badgeMultiplier(s)).toFixed(2)}`],
+        ['Total income bonus', `x${(pearlMultiplier(s) * badgeMultiplier(s) * (s.captainPass ? 2 : 1)).toFixed(2)}`],
       ];
       $('slist').innerHTML = lines.map(([k, v]) => `<div class="srow"><span>${k}</span><b>${v}</b></div>`).join('');
     } else if (tab === 'sail') {

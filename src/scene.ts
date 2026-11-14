@@ -1,5 +1,6 @@
-import { CONFIG, StationId, stationById } from './config';
-import { GameState, cycleIncome, dockFishers, fleetTiers, startCycle, tap, upgradeCost } from './game';
+import { CONFIG, OUTFITS, RODS, StationId, stationById } from './config';
+import { PLANK_SKINS, SAND_SKINS } from './decor';
+import { GameState, cycleIncome, dockFishers, fleetTiers, startCycle, tap, tapValue, upgradeCost } from './game';
 import { sfx } from './audio';
 import { fmt } from './format';
 
@@ -20,7 +21,7 @@ const raftImg = loadImg(raftUrl);
 const BOAT_SPOTS: [number, number][] = [[292, 128], [222, 164], [306, 198]];
 const BASE_SH = 340;
 const INK = '#2d1e3e';
-const WATER_Y = 112, SAND_Y = 226, BASE_Y = 314, DECK_Y = 196;
+const WATER_Y = 112, SAND_Y = 226, BASE_Y = 314, DECK_Y = 146;   // the pier sits well out in the sea, with open water between it and the beach
 const SHED = { x: 14, w: 112 };
 const MARKET = { x: 236, w: 112 };
 
@@ -52,7 +53,7 @@ function label(c: Ctx, text: string, x: number, y: number, size: number, fill: s
   c.fillStyle = fill; c.fillText(text, x, y);
 }
 
-interface P { shirt: string; hat: 'straw' | 'hard' | 'cap' | 'none'; hatColor?: string; bob?: number; arm?: number; flip?: number }
+interface P { shirt: string; hat: 'straw' | 'hard' | 'cap' | 'crown' | 'none'; hatColor?: string; bob?: number; arm?: number; flip?: number }
 
 function person(c: Ctx, x: number, y: number, k: number, o: P) {
   const bob = o.bob ?? 0;
@@ -74,6 +75,8 @@ function person(c: Ctx, x: number, y: number, k: number, o: P) {
   } else if (o.hat === 'hard') {
     rr(c, -9, -34 + bob, 18, 3.4, 1.5); paint(c, hc, 1.6);
     c.beginPath(); c.arc(0, -33.5 + bob, 7.6, Math.PI, 0); c.closePath(); paint(c, hc, 1.6);
+  } else if (o.hat === 'crown') {
+    c.beginPath(); c.moveTo(-6, -33 + bob); c.lineTo(-6.5, -40 + bob); c.lineTo(-3, -36 + bob); c.lineTo(0, -41.5 + bob); c.lineTo(3, -36 + bob); c.lineTo(6.5, -40 + bob); c.lineTo(6, -33 + bob); c.closePath(); paint(c, hc, 1.6);
   } else if (o.hat === 'cap') {
     c.beginPath(); c.arc(0, -32.5 + bob, 7.6, Math.PI, 0); c.closePath(); paint(c, hc, 1.6);
     rr(c, 2, -34 + bob, 9, 3, 1.4); paint(c, hc, 1.4);
@@ -145,6 +148,7 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
   const pops: Pop[] = [];
   const splashes: Splash[] = [];
   let lastTap = -10;
+  let cast: { x: number; y: number; t0: number } | null = null;   // where the player's fisherman last cast to
   const prev: Record<StationId, { p: number; run: boolean }> = {
     dock: { p: 0, run: false }, shed: { p: 0, run: false }, market: { p: 0, run: false }, fleet: { p: 0, run: false },
   };
@@ -160,7 +164,7 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
     const y = ((e.clientY - r.top) / r.height) * SHv - dy;   // y in "harbor" coordinates
     const now = performance.now() / 1000;
     const hit: [StationId, number, number, number, number][] = [
-      ['shed', SHED.x - 6, 226, SHED.w + 12, 100], ['market', MARKET.x - 6, 226, MARKET.w + 12, 100], ['dock', -6, 146, 56, 54],
+      ['shed', SHED.x - 6, 226, SHED.w + 12, 100], ['market', MARKET.x - 6, 226, MARKET.w + 12, 100], ['dock', -6, DECK_Y - 50, 56, 54],
     ];
     const ys = y + dy;   // y on the whole screen, for the boats' sea layer
     const fleetLevel = s.stations.fleet.level;
@@ -175,8 +179,10 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
     onOpen(null);
     tap(s); startCycle(s, 'dock'); sfx.tap();
     lastTap = now;
-    pops.push({ x, y, t0: now, text: `+${CONFIG.tapValue}` });
-    splashes.push({ x, y: Math.min(Math.max(y, WATER_Y + 12 - (dy - dyTop)), SAND_Y - 8), t0: now });
+    const tx = Math.min(Math.max(x, 175), SW - 12), ty = Math.min(Math.max(y, DECK_Y + 18), SAND_Y - 16);   // always lands in open water
+    cast = { x: tx, y: ty, t0: now };
+    pops.push({ x: tx, y: ty - 10, t0: now + 0.5, text: `+${fmt(tapValue(s))}` });
+    splashes.push({ x: tx, y: ty + 2, t0: now + 0.22 });
   });
 
   const boatOff = () => dyTop + (dy - dyTop) * 0.35;   // how far the sea layer with the boats is shifted down
@@ -194,7 +200,7 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
       const done = st.level >= 1 && ((st.hasManager && st.progress < pv.p) || (!st.hasManager && pv.run && !st.running));
       if (done) {
         const amt = `+${fmt(cycleIncome(s, cfg.id))}`; sfx.coin();
-        if (cfg.id === 'dock') pops.push({ x: 150, y: 176, t0: t, text: amt });
+        if (cfg.id === 'dock') pops.push({ x: 150, y: DECK_Y - 22, t0: t, text: amt });
         if (cfg.id === 'shed') pops.push({ x: SHED.x + SHED.w / 2, y: 262, t0: t, text: amt });
         if (cfg.id === 'fleet') pops.push({ x: BOAT_SPOTS[0][0], y: BOAT_SPOTS[0][1] + boatOff() - dy - 36, t0: t, text: amt });
         if (cfg.id === 'market') pops.push({ x: MARKET.x + MARKET.w / 2, y: 270, t0: t, text: amt });
@@ -320,43 +326,60 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
   }
 
   function pier(c: Ctx, t: number, p: number) {
-    for (const x of [8, 58, 108, 158, 184]) {
-      wood(c, x, DECK_Y + 8, 8, 30, '#8a5530', '#b9803f', '#4a2b13', false, 5);
-      c.beginPath(); c.ellipse(x + 4, DECK_Y + 37, 9, 2.4, 0, 0, TAU); c.fillStyle = 'rgba(255,241,201,.65)'; c.fill();
+    for (const x of [8, 58, 108, 158, 208, 238]) {
+      wood(c, x, DECK_Y + 8, 8, 36, '#8a5530', '#b9803f', '#4a2b13', false, 5);
+      c.beginPath(); c.ellipse(x + 4, DECK_Y + 43, 9, 2.4, 0, 0, TAU); c.fillStyle = 'rgba(255,241,201,.65)'; c.fill();
     }
-    c.beginPath(); c.moveTo(12, DECK_Y + 16); c.quadraticCurveTo(35, DECK_Y + 24, 62, DECK_Y + 16); c.quadraticCurveTo(85, DECK_Y + 24, 112, DECK_Y + 16);
+    c.beginPath(); c.moveTo(12, DECK_Y + 16);
+    for (let x = 12; x < 212; x += 50) c.quadraticCurveTo(x + 25, DECK_Y + 24, x + 50, DECK_Y + 16);
     c.lineWidth = 1.6; c.strokeStyle = '#e8b86a'; c.stroke();
-    wood(c, -6, DECK_Y, 202, 12, '#c78a45', '#e8b86a', '#7a4b2a', true, 14);
-    c.fillStyle = 'rgba(45,30,62,.45)'; c.fillRect(-4, DECK_Y + 12, 198, 3);
+    wood(c, -6, DECK_Y, 258, 12, '#c78a45', '#e8b86a', '#7a4b2a', true, 14);
+    c.fillStyle = 'rgba(45,30,62,.45)'; c.fillRect(-4, DECK_Y + 12, 254, 3);
     // dusk lantern on the pier's end
-    rr(c, 189, DECK_Y - 30, 3, 30, 1); paint(c, '#4a2b13', 1.4);
+    rr(c, 242, DECK_Y - 30, 3, 30, 1); paint(c, '#4a2b13', 1.4);
     const fl = 0.75 + Math.sin(t * 7) * 0.12;
-    const lg = c.createRadialGradient(190.5, DECK_Y - 32, 1, 190.5, DECK_Y - 32, 20);
+    const lg = c.createRadialGradient(243.5, DECK_Y - 32, 1, 243.5, DECK_Y - 32, 20);
     lg.addColorStop(0, `rgba(255,225,140,${0.38 * fl})`); lg.addColorStop(1, 'rgba(255,225,140,0)');
-    c.fillStyle = lg; c.fillRect(170, DECK_Y - 52, 42, 42);
-    rr(c, 185, DECK_Y - 38, 11, 9, 2); paint(c, '#ffd75e', 1.6);
+    c.fillStyle = lg; c.fillRect(222, DECK_Y - 52, 42, 42);
+    rr(c, 238, DECK_Y - 38, 11, 9, 2); paint(c, '#ffd75e', 1.6);
 
     hut(c);
     const level = s.stations.dock.level;
-    const spots = [172, 138, 104, 70];
+    const spots = [222, 186, 150, 114];
     const hired = dockFishers(level);
-    const reel = Math.max(0, 1 - (performance.now() / 1000 - lastTap) / 0.35);
+    const now = performance.now() / 1000;
+    const ca = cast && now - cast.t0 < 0.95 ? now - cast.t0 : -1;
+    const outfit = OUTFITS[s.outfitTier], rod = RODS[s.rodTier];
     for (let i = 0; i <= hired; i++) {
-      const px = spots[i];
+      const px = spots[i], me = i === 0;
       const u = p >= 0.78 ? (p - 0.78) / 0.22 : 0;
-      const jerk = Math.max(i === 0 ? reel : 0, u > 0 ? Math.sin(Math.min(1, u * 2.5) * Math.PI) : 0);
-      const arm = -0.9 - jerk * 0.5;
-      person(c, px, DECK_Y, 0.9, { shirt: ['#f06a6a', '#4aa3df', '#6bc46d', '#b07ae0'][i], hat: 'straw', arm, bob: Math.sin(t * 2 + i) * 0.4 });
+      let jerk = u > 0 ? Math.sin(Math.min(1, u * 2.5) * Math.PI) : 0, swing = 0;
+      if (me && ca >= 0) {
+        if (ca < 0.18) swing = -0.9 * (1 - ca / 0.18);          // wind-up, then the cast
+        else if (ca > 0.6) jerk = Math.max(jerk, Math.sin(((ca - 0.6) / 0.35) * Math.PI));   // reeling in
+      }
+      const arm = -0.9 - jerk * 0.5 + swing * 0.5, bob = Math.sin(t * 2 + i) * 0.4;
+      person(c, px, DECK_Y, 0.9, me
+        ? { shirt: outfit.shirt, hat: outfit.hat, hatColor: outfit.hatColor, arm, bob }
+        : { shirt: ['#f06a6a', '#4aa3df', '#6bc46d', '#b07ae0'][i], hat: 'straw', arm, bob });
       const ox = px + (5 + Math.cos(arm) * 9) * 0.9, oy = DECK_Y + (-17 + Math.sin(arm) * 9) * 0.9;
-      const ra = -0.78 - jerk * 0.55;
+      const ra = -0.78 - jerk * 0.55 + swing;
       const tx = ox + Math.cos(ra) * 32, ty = oy + Math.sin(ra) * 32;
-      c.beginPath(); c.moveTo(ox, oy); c.lineTo(tx, ty); c.lineWidth = 2.2; c.strokeStyle = INK; c.lineCap = 'round'; c.stroke();
+      c.beginPath(); c.moveTo(ox, oy); c.lineTo(tx, ty); c.lineWidth = 3.4; c.strokeStyle = INK; c.lineCap = 'round'; c.stroke();
+      c.lineWidth = 1.6; c.strokeStyle = me ? rod.color : '#c78a45'; c.stroke();
+      if (me && s.rodTier >= 4 && Math.sin(t * 6) > 0.4) dot(c, tx, ty, 1.7, '#fff8e8');
       const dip = p > 0.6 && u < 0.4 && p >= 0 ? 3 : 0;
-      const bx = tx + 17, by = 214 + Math.sin(t * 3 + i) * 1.1 + dip;
-      c.beginPath(); c.moveTo(tx, ty); c.lineTo(bx, by - 2); c.lineWidth = 1; c.strokeStyle = 'rgba(43,37,64,.75)'; c.stroke();
-      c.beginPath(); c.arc(bx, by, 3, 0, TAU); paint(c, '#e8553d', 1.2);
-      c.beginPath(); c.arc(bx, by - 1, 3, Math.PI, 0); c.fillStyle = '#fff'; c.fill();
-      if (u > 0 && u < 1) fish(c, bx + u * 8, by - 6 - Math.sin(u * Math.PI) * 26, -(u - 0.5) * 2.4, 0.85, '#ff9f43');
+      let bx = tx + 17, by = DECK_Y + 24 + Math.sin(t * 3 + i) * 1.1 + dip;
+      let reel = -1;
+      if (me && ca >= 0 && cast) {
+        if (ca < 0.25) { const e = ca / 0.25; bx = tx + (cast.x - tx) * e; by = ty + (cast.y - ty) * e - Math.sin(e * Math.PI) * 16; }
+        else if (ca < 0.6) { bx = cast.x; by = cast.y + (ca > 0.4 ? 2 : 0) + Math.sin(ca * 40) * 0.6; }
+        else { reel = (ca - 0.6) / 0.35; bx = cast.x + (tx - cast.x) * reel; by = cast.y + (ty - cast.y) * reel - Math.sin(reel * Math.PI) * 24; }
+      }
+      c.beginPath(); c.moveTo(tx, ty); c.lineTo(bx, by - 2); c.lineWidth = 1; c.strokeStyle = 'rgba(255,248,232,.85)'; c.stroke();
+      if (reel >= 0) fish(c, bx, by, -(reel - 0.5) * 2.4, 0.95, '#ff9f43');
+      else { c.beginPath(); c.arc(bx, by, 3, 0, TAU); paint(c, '#e8553d', 1.2); c.beginPath(); c.arc(bx, by - 1, 3, Math.PI, 0); c.fillStyle = '#fff'; c.fill(); }
+      if (u > 0 && u < 1 && !(me && ca >= 0)) fish(c, bx + u * 8, by - 6 - Math.sin(u * Math.PI) * 26, -(u - 0.5) * 2.4, 0.85, '#ff9f43');
     }
     if (s.stations.dock.hasManager) {
       person(c, 22, DECK_Y, 0.95, { shirt: '#3b82f6', hat: 'hard', hatColor: '#ffd23f', arm: 0.9 });
@@ -366,7 +389,7 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
   function land(c: Ctx, t: number) {
     c.beginPath(); c.moveTo(0, SAND_Y);
     for (let x = 0; x <= SW; x += 6) c.lineTo(x, SAND_Y + Math.sin(x * 0.07 + t * 1.5) * 2.2);
-    c.lineTo(SW, BASE_SH + reserve); c.lineTo(0, BASE_SH + reserve); c.closePath(); c.fillStyle = '#f5dfa6'; c.fill();
+    c.lineTo(SW, BASE_SH + reserve); c.lineTo(0, BASE_SH + reserve); c.closePath(); c.fillStyle = SAND_SKINS[s.skins.sand].color; c.fill();
     c.beginPath();
     for (let x = 0; x <= SW; x += 6) {
       const y = SAND_Y + Math.sin(x * 0.07 + t * 1.5) * 2.2;
@@ -375,20 +398,21 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
     c.lineWidth = 3; c.strokeStyle = 'rgba(255,255,255,.95)'; c.stroke();
     for (let i = 0; i < 9; i++) dot(c, (i * 47 + 11) % SW, 240 + ((i * 29) % 60), 1.4, 'rgba(160,120,60,.35)');
     // boardwalk
-    c.fillStyle = '#b9803f'; c.fillRect(0, BASE_Y, SW, BASE_SH + reserve - BASE_Y);
+    c.fillStyle = PLANK_SKINS[s.skins.planks].color; c.fillRect(0, BASE_Y, SW, BASE_SH + reserve - BASE_Y);
     c.lineWidth = 2; c.strokeStyle = INK; c.beginPath(); c.moveTo(0, BASE_Y); c.lineTo(SW, BASE_Y); c.stroke();
-    c.lineWidth = 1; c.strokeStyle = 'rgba(43,37,64,.35)';
+    c.lineWidth = 1; c.strokeStyle = PLANK_SKINS[s.skins.planks].seam;
     for (let x = 0; x < SW; x += 26) { c.beginPath(); c.moveTo(x, BASE_Y); c.lineTo(x, BASE_SH + reserve); c.stroke(); }
     for (let yy = BASE_Y + 13; yy < BASE_SH + reserve; yy += 13) { c.beginPath(); c.moveTo(0, yy); c.lineTo(SW, yy); c.stroke(); }
   }
 
   function hut(c: Ctx) {
-    c.beginPath(); c.moveTo(-10, 168); c.lineTo(50, 168); c.lineTo(42, 150); c.lineTo(-2, 150); c.closePath(); paint(c, '#2f86b5', 2.2);
-    rr(c, -6, 168, 52, DECK_Y - 168, 2); paint(c, '#9a6236', 2.2);
-    rr(c, 4, 176, 14, DECK_Y - 176, 2); paint(c, '#3d2314', 1.8);
-    fish(c, 31, 180, 0, 0.8, '#4fb3d6');
-    c.beginPath(); c.arc(36, 190, 3.5, 0, TAU); paint(c, '#c4453a', 1.4);
-    if (s.stations.dock.level < 1) lockOverlay(c, -8, 150, 56, DECK_Y - 150);
+    const R = DECK_Y - 46, W = DECK_Y - 28;
+    c.beginPath(); c.moveTo(-10, W); c.lineTo(50, W); c.lineTo(42, R); c.lineTo(-2, R); c.closePath(); paint(c, '#2f86b5', 2.2);
+    wood(c, -6, W, 52, DECK_Y - W, '#9a6236', '#c78a45', '#4a2b13', false, 6);
+    rr(c, 4, DECK_Y - 20, 14, 20, 2); paint(c, '#3d2314', 1.8);
+    fish(c, 31, DECK_Y - 16, 0, 0.8, '#4fb3d6');
+    c.beginPath(); c.arc(36, DECK_Y - 6, 3.5, 0, TAU); paint(c, '#c4453a', 1.4);
+    if (s.stations.dock.level < 1) lockOverlay(c, -8, R, 56, DECK_Y - R);
   }
 
   // Bouncing marker over a building: green arrow = you can afford something, orange ! = hand-run station is idle.
@@ -470,9 +494,9 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
   function raft(c: Ctx, t: number) {
     if (!(raftImg.complete && raftImg.naturalWidth)) return;
     const by = 212 + Math.round(Math.sin(t * 1.3 + 1) * 1.1) * 2;
-    c.beginPath(); c.ellipse(262, by + 3, 28, 3, 0, 0, TAU); c.fillStyle = 'rgba(255,225,215,.5)'; c.fill();
+    c.beginPath(); c.ellipse(318, by + 3, 24, 3, 0, 0, TAU); c.fillStyle = 'rgba(255,225,215,.5)'; c.fill();
     c.imageSmoothingEnabled = false;
-    c.drawImage(raftImg, Math.round(262 - raftImg.naturalWidth), by - raftImg.naturalHeight * 2 + 4, raftImg.naturalWidth * 2, raftImg.naturalHeight * 2);
+    c.drawImage(raftImg, Math.round(318 - raftImg.naturalWidth), by - raftImg.naturalHeight * 2 + 4, raftImg.naturalWidth * 2, raftImg.naturalHeight * 2);
   }
 
   function barrel(c: Ctx, x: number, y: number) {
@@ -511,6 +535,104 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
     dot(c, cx, cy, 1.8, INK);
   }
 
+  // ---------- cosmetics you can buy ----------
+  const own = (id: string) => s.decor.includes(id);
+  const star5 = (c: Ctx, x: number, y: number, r: number, col: string) => {
+    c.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr2 = i % 2 ? r * 0.45 : r; c.lineTo(x + Math.cos(a) * rr2, y + Math.sin(a) * rr2); } c.closePath(); paint(c, col, 1.4);
+  };
+
+  function decorBeach(c: Ctx, t: number) {
+    if (own('shells')) {
+      star5(c, 160, 244, 6, '#e8603c'); star5(c, 138, 252, 4.5, '#f28c4a');
+      for (const [x, y] of [[196, 238], [178, 250]]) { c.beginPath(); c.ellipse(x, y, 5, 4, 0, Math.PI, TAU); c.closePath(); paint(c, '#fff1c9', 1.4); c.lineWidth = 1; c.strokeStyle = '#e8898a'; c.beginPath(); c.moveTo(x, y); c.lineTo(x - 3, y - 3); c.moveTo(x, y); c.lineTo(x + 3, y - 3); c.stroke(); }
+    }
+    if (own('driftwood')) { rr(c, 190, 306, 34, 8, 4); paint(c, '#9a6236', 1.8); c.beginPath(); c.arc(192, 310, 3, 0, TAU); c.lineWidth = 1; c.strokeStyle = '#4a2b13'; c.stroke(); c.fillStyle = '#c78a45'; c.fillRect(200, 307, 14, 1.6); }
+    if (own('sandcastle')) {
+      const x = 144, y = 312;
+      rr(c, x - 14, y - 10, 28, 10, 2); paint(c, '#e8b86a', 1.8);
+      for (const [dx, h] of [[-17, 22], [7, 22], [-5, 30]]) { rr(c, x + dx, y - h, 10, h, 1.5); paint(c, '#e8b86a', 1.8); c.fillStyle = '#e8b86a'; for (let k = 0; k < 3; k++) c.fillRect(x + dx + k * 4, y - h - 3, 2.4, 3); }
+      c.lineWidth = 1.4; c.strokeStyle = INK; c.beginPath(); c.moveTo(x, y - 33); c.lineTo(x, y - 41); c.stroke();
+      c.beginPath(); c.moveTo(x, y - 41); c.lineTo(x + 8 + Math.sin(t * 5) * 1.5, y - 38); c.lineTo(x, y - 35); c.closePath(); paint(c, '#c4453a', 1.2);
+    }
+    if (own('umbrella')) {
+      const x = 170, y = 308;
+      for (let k = 0; k < 5; k++) { rr(c, x - 16 + k * 7, y - 4, 7, 6, 0); c.fillStyle = k % 2 ? '#fff1c9' : '#4fb3d6'; c.fill(); }
+      c.lineWidth = 1.6; c.strokeStyle = INK; c.strokeRect(x - 16, y - 4, 35, 6);
+      c.beginPath(); c.moveTo(x + 2, y - 4); c.lineTo(x, y - 46); c.lineWidth = 3; c.strokeStyle = INK; c.stroke(); c.lineWidth = 1.4; c.strokeStyle = '#e8b86a'; c.stroke();
+      for (let k = 0; k < 6; k++) { c.beginPath(); c.moveTo(x, y - 46); c.arc(x, y - 46, 26, Math.PI + k * Math.PI / 6, Math.PI + (k + 1) * Math.PI / 6); c.closePath(); c.fillStyle = k % 2 ? '#fff1c9' : '#e8553d'; c.fill(); }
+      c.beginPath(); c.arc(x, y - 46, 26, Math.PI, 0); c.lineWidth = 2; c.strokeStyle = INK; c.stroke();
+    }
+    if (own('palm')) {
+      const x = 218, y = 312, sway = Math.sin(t * 1.1) * 2;
+      for (let k = 0; k < 6; k++) { rr(c, x + Math.sin(k * 0.55) * 4 + k * 0.6 + sway * (k / 12) - 3, y - 10 - k * 9, 7, 11, 1); paint(c, k % 2 ? '#9a6236' : '#7a4b2a', 1.4); }
+      const hx = x + 5 + sway * 0.5, hy = y - 62;
+      for (let k = 0; k < 6; k++) {
+        const a = -Math.PI / 2 + (k - 2.5) * 0.62 + sway * 0.03;
+        c.beginPath(); c.moveTo(hx, hy); c.quadraticCurveTo(hx + Math.cos(a) * 14, hy + Math.sin(a) * 14 - 8, hx + Math.cos(a) * 28, hy + Math.sin(a) * 22 + 6); c.quadraticCurveTo(hx + Math.cos(a) * 14, hy + Math.sin(a) * 14 + 1, hx, hy); c.closePath(); paint(c, k % 2 ? '#2f7a4a' : '#58a85a', 1.4);
+      }
+      dot(c, hx - 2, hy + 3, 2.6, '#6b3f23'); dot(c, hx + 3, hy + 4, 2.6, '#6b3f23');
+    }
+    if (own('beachball')) { const x = 232, y = 308; for (let k = 0; k < 4; k++) { c.beginPath(); c.moveTo(x, y); c.arc(x, y, 6.5, k * Math.PI / 2, (k + 1) * Math.PI / 2); c.closePath(); c.fillStyle = ['#e8553d', '#fff1c9', '#4fb3d6', '#ffd75e'][k]; c.fill(); } c.beginPath(); c.arc(x, y, 6.5, 0, TAU); c.lineWidth = 1.8; c.strokeStyle = INK; c.stroke(); }
+  }
+
+  function decorBoard(c: Ctx, t: number) {
+    const y1 = BASE_Y + 34, y2 = BASE_Y + 82;
+    if (own('fairy')) {
+      c.beginPath(); for (let x = 0; x <= SW; x += 6) { const y = BASE_Y + 5 + Math.sin(x * 0.09) * 3; x === 0 ? c.moveTo(x, y) : c.lineTo(x, y); } c.lineWidth = 1.2; c.strokeStyle = INK; c.stroke();
+      for (let x = 8; x < SW; x += 18) { const y = BASE_Y + 5 + Math.sin(x * 0.09) * 3 + 3, on = Math.sin(t * 3 + x) > -0.3; dot(c, x, y, on ? 2.6 : 1.8, on ? ['#ffd75e', '#f4a99a', '#8fd6e8', '#9bd16b'][(x / 18 | 0) % 4] : '#8a4f7d'); }
+    }
+    if (own('planters')) for (const x of [38, 104]) {
+      for (let k = 0; k < 4; k++) { c.lineWidth = 1.2; c.strokeStyle = '#2f7a4a'; c.beginPath(); c.moveTo(x - 8 + k * 5, y1 - 8); c.lineTo(x - 9 + k * 5.5, y1 - 15 - (k % 2) * 3); c.stroke(); dot(c, x - 9 + k * 5.5, y1 - 16 - (k % 2) * 3, 2.6, ['#e8553d', '#ffd75e', '#e8898a', '#fff1c9'][k]); }
+      rr(c, x - 12, y1 - 9, 24, 10, 2); paint(c, '#9a6236', 1.8);
+    }
+    if (own('lamp')) {
+      const x = 66, fl = 0.8 + Math.sin(t * 6 + 1) * 0.1;
+      rr(c, x - 2, y1 - 44, 4, 44, 1); paint(c, '#3d2314', 1.6);
+      const g = c.createRadialGradient(x, y1 - 50, 1, x, y1 - 50, 26); g.addColorStop(0, `rgba(255,225,140,${0.45 * fl})`); g.addColorStop(1, 'rgba(255,225,140,0)'); c.fillStyle = g; c.fillRect(x - 26, y1 - 76, 52, 52);
+      rr(c, x - 6, y1 - 54, 12, 10, 2); paint(c, '#ffd75e', 1.6);
+    }
+    if (own('bench')) {
+      const x = 262, y = y1 + 6;
+      rr(c, x - 20, y - 26, 40, 5, 1); paint(c, '#c78a45', 1.6); rr(c, x - 20, y - 14, 40, 6, 1); paint(c, '#e8b86a', 1.6);
+      rr(c, x - 17, y - 8, 4, 9, 1); paint(c, '#3d2314', 1.4); rr(c, x + 13, y - 8, 4, 9, 1); paint(c, '#3d2314', 1.4);
+    }
+    if (own('picnic')) {
+      const x = 92, y = y2;
+      rr(c, x - 24, y - 6, 48, 5, 1); paint(c, '#c78a45', 1.6); rr(c, x - 22, y - 20, 44, 7, 1); paint(c, '#e8b86a', 1.6);
+      rr(c, x - 18, y - 13, 4, 14, 1); paint(c, '#3d2314', 1.4); rr(c, x + 14, y - 13, 4, 14, 1); paint(c, '#3d2314', 1.4);
+      c.beginPath(); c.arc(x - 6, y - 22, 3.5, 0, TAU); paint(c, '#e8553d', 1.2);
+    }
+    if (own('rack')) {
+      const x = 178, y = y2 + 2;
+      rr(c, x - 30, y - 34, 4, 36, 1); paint(c, '#7a4b2a', 1.4); rr(c, x + 26, y - 34, 4, 36, 1); paint(c, '#7a4b2a', 1.4); rr(c, x - 32, y - 36, 66, 4, 1); paint(c, '#9a6236', 1.4);
+      for (let k = 0; k < 5; k++) fish(c, x - 20 + k * 11, y - 18 + (k % 2) * 3 + Math.sin(t * 2 + k) * 0.8, Math.PI / 2, 0.8, k % 2 ? '#7fc8f8' : '#ff9f43');
+    }
+    if (own('anchor')) {
+      const x = 264, y = y2 + 4;
+      for (const [w, col] of [[5, INK], [2.6, '#8e9ab5']] as [number, string][]) {
+        c.lineWidth = w; c.strokeStyle = col; c.lineCap = 'round';
+        c.beginPath(); c.moveTo(x, y - 36); c.lineTo(x, y); c.moveTo(x - 8, y - 26); c.lineTo(x + 8, y - 26); c.stroke();
+        c.beginPath(); c.arc(x, y - 40, 4, 0, TAU); c.stroke();
+        c.beginPath(); c.arc(x, y - 10, 13, 0.15, Math.PI - 0.15); c.stroke();
+      }
+    }
+    if (own('chest')) {
+      const x = 330, y = y2 + 6;
+      rr(c, x - 15, y - 12, 30, 12, 2); paint(c, '#9a6236', 1.8);
+      c.beginPath(); c.arc(x, y - 12, 15, Math.PI, 0); c.closePath(); paint(c, '#c78a45', 1.8);
+      rr(c, x - 3, y - 14, 6, 6, 1); paint(c, '#ffd75e', 1.2);
+      if (Math.sin(t * 4) > 0.5) dot(c, x + 9, y - 21, 1.8, '#fff8e8');
+    }
+    if (own('flag')) {
+      const x = 22, y = y2 + 6;
+      rr(c, x - 1.5, y - 66, 3, 66, 1); paint(c, '#3d2314', 1.4);
+      c.beginPath(); c.moveTo(x + 1.5, y - 64);
+      for (let k = 0; k <= 5; k++) c.lineTo(x + 2 + k * 6, y - 64 + Math.sin(t * 5 + k) * 2);
+      for (let k = 5; k >= 0; k--) c.lineTo(x + 2 + k * 6, y - 50 + Math.sin(t * 5 + k) * 2);
+      c.closePath(); paint(c, '#c4453a', 1.6); fish(c, x + 17, y - 57 + Math.sin(t * 5 + 2) * 2, 0, 0.6, '#fff8e8');
+    }
+  }
+
   function lockOverlay(c: Ctx, x: number, y: number, w: number, h: number) {
     rr(c, x, y, w, h, 6); c.fillStyle = 'rgba(255,241,201,.62)'; c.fill(); c.lineWidth = 1.5; c.setLineDash([4, 3]); c.strokeStyle = '#8a4f7d'; c.stroke(); c.setLineDash([]);
     const cx = x + w / 2, cy = y + h / 2;
@@ -522,13 +644,13 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
 
   function effects(c: Ctx, t: number) {
     for (let i = splashes.length - 1; i >= 0; i--) {
-      const a = t - splashes[i].t0; if (a > 0.6) { splashes.splice(i, 1); continue; }
+      const a = t - splashes[i].t0; if (a > 0.6) { splashes.splice(i, 1); continue; } if (a < 0) continue;
       const sp = splashes[i];
       c.beginPath(); c.ellipse(sp.x, sp.y, 4 + a * 26, 1.5 + a * 9, 0, 0, TAU);
       c.lineWidth = 2; c.strokeStyle = `rgba(255,255,255,${1 - a / 0.6})`; c.stroke();
     }
     for (let i = pops.length - 1; i >= 0; i--) {
-      const a = t - pops[i].t0; if (a > 1.1) { pops.splice(i, 1); continue; }
+      const a = t - pops[i].t0; if (a > 1.1) { pops.splice(i, 1); continue; } if (a < 0) continue;
       c.globalAlpha = Math.min(1, (1.1 - a) * 2);
       label(c, pops[i].text, pops[i].x, pops[i].y - a * 30, 19, '#ffd75e');
       c.globalAlpha = 1;
@@ -548,9 +670,9 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
     badge(c, 'fleet', BOAT_SPOTS[0][0], BOAT_SPOTS[0][1] - (fl >= 5 ? 70 : fl >= 3 ? 56 : 30), t);
     c.restore();
     c.save(); c.translate(0, dy);
-    raft(c, t); pier(c, t, pd); land(c, t); props(c, t);
-    shed(c, t, phase('shed')); market(c, t, phase('market'));
-    badge(c, 'dock', 20, 138, t);
+    raft(c, t); pier(c, t, pd); land(c, t); props(c, t); decorBeach(c, t);
+    shed(c, t, phase('shed')); market(c, t, phase('market')); decorBoard(c, t);
+    badge(c, 'dock', 20, DECK_Y - 58, t);
     effects(c, t);
     c.restore();
     pines(c, t);

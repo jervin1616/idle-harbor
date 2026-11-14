@@ -17,3 +17,9 @@ npm run android:open     # builds the web app, syncs it into android/, opens And
 Then press Run in Android Studio (emulator or a USB phone). Ads use Google's TEST ids until you change
 `ADMOB` in `src/config.ts` and the `admob_app_id` in `android/app/src/main/res/values/strings.xml`.
 The app id `com.risingtidedigital.idleharbor` (capacitor.config.ts) cannot change after the first Play upload.
+
+## Before you publish (checklist)
+- `ADMOB.testing` in `src/config.ts` is **true** (Google test ads). Switch to false and use your own ad unit ids.
+- `PAYMENTS.testMode` in `src/payments.ts` is **true**: the Shop grants items after a free "TEST PURCHASE" confirmation.
+  Real billing is not wired up yet; in production mode purchases grant nothing until Google Play Billing is added.
+- Replace the test AdMob app id in `android/app/src/main/res/values/strings.xml`.

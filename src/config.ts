@@ -49,6 +49,26 @@ export const FLEET_BOAT_GAP = 20;
 // Dock levels at which another fisherman joins you on the pier.
 export const DOCK_FISHER_LEVELS = [15, 40, 70];
 
+// Fishing gear: each tier you own multiplies what a tap earns. Buying the next tier equips it automatically.
+export interface Rod { name: string; cost: number; gems?: number; mult: number; color: string }
+export interface Outfit { name: string; cost: number; gems?: number; mult: number; shirt: string; hat: 'straw' | 'cap' | 'hard' | 'crown'; hatColor: string }
+export const RODS: Rod[] = [
+  { name: 'Twig Pole',       cost: 0,    mult: 1,    color: '#c78a45' },
+  { name: 'Bamboo Rod',      cost: 600,  mult: 3,    color: '#e8b86a' },
+  { name: 'Fiberglass Rod',  cost: 25e3, mult: 10,   color: '#4fb3d6' },
+  { name: 'Carbon Rod',      cost: 9e5,  gems: 10, mult: 40,   color: '#8a4f7d' },
+  { name: 'Golden Rod',      cost: 4e7,  gems: 25, mult: 200,  color: '#ffd75e' },
+  { name: 'Trident Rod',     cost: 3e9,  gems: 60, mult: 1000, color: '#e8898a' },
+];
+export const OUTFITS: Outfit[] = [
+  { name: 'Plain Tee',        cost: 0,     mult: 1,   shirt: '#f06a6a', hat: 'straw', hatColor: '#f2c14e' },
+  { name: 'Fisher Vest',      cost: 2.5e3, mult: 1.5, shirt: '#58a85a', hat: 'straw', hatColor: '#f2c14e' },
+  { name: 'Yellow Slicker',   cost: 1e5,   mult: 2,   shirt: '#ffd75e', hat: 'cap',   hatColor: '#ffd75e' },
+  { name: "Captain's Coat",   cost: 4e6,   gems: 10, mult: 3,   shirt: '#25618f', hat: 'cap',   hatColor: '#fff8e8' },
+  { name: 'Admiral Uniform',  cost: 2e8,   gems: 25, mult: 4,   shirt: '#c4453a', hat: 'cap',   hatColor: '#ffd75e' },
+  { name: 'Sea King Regalia', cost: 1.2e10, gems: 60, mult: 6,  shirt: '#8a4f7d', hat: 'crown', hatColor: '#ffd75e' },
+];
+
 // AdMob. These are Google's official TEST ids, safe to tap. Before launch: set testing to false and use your own ids.
 export const ADMOB = {
   testing: true,

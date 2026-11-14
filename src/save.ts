@@ -1,4 +1,5 @@
-import { CONFIG } from './config';
+import { CONFIG, OUTFITS, RODS } from './config';
+import { ACHIEVEMENTS } from './achievements';
 import { GameState, newState } from './game';
 
 export function save(s: GameState) {
@@ -17,10 +18,17 @@ export function parseSave(raw: string): GameState | null {
       out.stations[k] = { ...base.stations[k], ...out.stations[k] };
       out.stations[k].level = Math.max(0, Math.min(CONFIG.maxLevel, Math.floor(out.stations[k].level) || 0));
     }
+    if (!Array.isArray(out.decor)) out.decor = [];
+    out.decor = out.decor.filter(x => typeof x === 'string');
+    out.skins = { ...base.skins, ...p.skins };
+    out.rodTier = Math.max(0, Math.min(RODS.length - 1, Math.floor(out.rodTier) || 0));
+    out.outfitTier = Math.max(0, Math.min(OUTFITS.length - 1, Math.floor(out.outfitTier) || 0));
     if (!Array.isArray(out.achievements)) out.achievements = [];
     out.achievements = out.achievements.filter(x => typeof x === 'string');
+    if (typeof p.gems !== 'number') out.gems = ACHIEVEMENTS.filter(a => out.achievements.includes(a.id)).reduce((n, a) => n + a.gems, 0);   // older saves: pay gems for badges already earned
+    out.captainPass = p.captainPass === true;
     if (typeof out.runEarned !== 'number' || p.version === 1) out.runEarned = out.totalEarned || 0;
-    for (const k of ['coins', 'totalEarned', 'runEarned', 'pearls', 'prestiges', 'taps', 'fishCaught', 'playSeconds', 'boostLeft', 'lastDaily', 'adsWatched'] as const) {
+    for (const k of ['coins', 'totalEarned', 'runEarned', 'pearls', 'prestiges', 'taps', 'fishCaught', 'playSeconds', 'boostLeft', 'lastDaily', 'adsWatched', 'gems'] as const) {
       if (!Number.isFinite(out[k]) || out[k] < 0) return null;
     }
     return out;

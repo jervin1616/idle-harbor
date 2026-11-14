@@ -11,6 +11,7 @@ const ICONS: Record<string, string[]> = {
   trophy: ['kkkkkkkkkk', 'kyyyyyyyyk', 'kyywyyyyyk', 'kykyyyykyk', '.kkyyyykk.', '...kyyk...', '....kk....', '...kyyk...', '..kkkkkk..'],
   bolt: ['....kk..', '...kyyk.', '..kyyk..', '.kyyyyk.', '..kkyyk.', '...kyk..', '...kyk..', '....kk..'],
   chest: ['.kkkkkkkk.', 'kssssssssk', 'knnnnnnnnk', 'kkkkyykkkk', 'knnnyynnnk', 'knnnnnnnnk', 'knnnnnnnnk', 'kkkkkkkkkk'],
+  menu: ['yyyyyyyyyy', 'yyyyyyyyyy', '..........', 'yyyyyyyyyy', 'yyyyyyyyyy', '..........', 'yyyyyyyyyy', 'yyyyyyyyyy'],
   hat: ['...kkkk...', '..kyyyyk..', '.kyywyyyk.', '.kyyyyyyk.', 'kkkkkkkkkk', 'kyyyyyyyyk', '.kkkkkkkk.'],
 };
 export const stationIcon: Record<string, string> = { dock: 'rod', shed: 'fish', market: 'basket', fleet: 'boat' };

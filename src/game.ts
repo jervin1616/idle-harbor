@@ -1,4 +1,5 @@
-import { CONFIG, DOCK_FISHER_LEVELS, FLEET_BOAT_GAP, FLEET_TIER_LEVELS, StationId, stationById } from './config';
+import { decorById } from './decor';
+import { CONFIG, OUTFITS, RODS, DOCK_FISHER_LEVELS, FLEET_BOAT_GAP, FLEET_TIER_LEVELS, StationId, stationById } from './config';
 
 // Numbers are plain doubles (safe to ~1e308); with 100 levels and prestige that is far more than enough.
 
@@ -24,6 +25,12 @@ export interface GameState {
   boostLeft: number;       // seconds of ad boost remaining (counts down only while playing)
   lastDaily: number;       // ms timestamp of last daily chest
   adsWatched: number;
+  gems: number;            // earned from badges, spent on premium gear and cosmetics
+  captainPass: boolean;    // shop purchase: permanent x2 income
+  rodTier: number;         // index into RODS (highest owned = equipped)
+  outfitTier: number;      // index into OUTFITS
+  decor: string[];         // owned cosmetic ids
+  skins: { sand: number; planks: number };   // equipped skin indexes (0 = default)
   stations: Record<StationId, StationState>;
   lastSaved: number;       // ms timestamp
 }
@@ -36,7 +43,7 @@ const blankStations = (): Record<StationId, StationState> => {
 export function newState(now = Date.now()): GameState {
   return {
     version: 2, coins: 0, totalEarned: 0, runEarned: 0, pearls: 0, prestiges: 0, taps: 0, fishCaught: 0,
-    playSeconds: 0, achievements: [], settings: { sound: true }, boostLeft: 0, lastDaily: 0, adsWatched: 0, lastSaved: now, stations: blankStations(),
+    playSeconds: 0, achievements: [], settings: { sound: true }, boostLeft: 0, lastDaily: 0, adsWatched: 0, gems: 0, captainPass: false, rodTier: 0, outfitTier: 0, decor: [], skins: { sand: 0, planks: 0 }, lastSaved: now, stations: blankStations(),
   };
 }
 
@@ -85,7 +92,8 @@ export function incomePerCycle(id: StationId, level: number): number {
 export const pearlMultiplier = (s: GameState) => 1 + s.pearls * CONFIG.pearlBonus;
 export const badgeMultiplier = (s: GameState) => 1 + s.achievements.length * CONFIG.achievementBonus;
 export const boostMultiplier = (s: GameState) => (s.boostLeft > 0 ? CONFIG.boostMultiplier : 1);
-export const globalMultiplier = (s: GameState) => pearlMultiplier(s) * badgeMultiplier(s) * boostMultiplier(s);
+export const passMultiplier = (s: GameState) => (s.captainPass ? 2 : 1);
+export const globalMultiplier = (s: GameState) => pearlMultiplier(s) * badgeMultiplier(s) * boostMultiplier(s) * passMultiplier(s);
 
 /** What one cycle actually pays right now. */
 export function cycleIncome(s: GameState, id: StationId, level = s.stations[id].level): number {
@@ -111,7 +119,41 @@ function earn(s: GameState, amount: number) {
   s.coins += amount; s.totalEarned += amount; s.runEarned += amount;
 }
 
-export function tap(s: GameState) { s.taps++; s.fishCaught++; earn(s, CONFIG.tapValue); }
+/** Coins one tap earns: base x rod x outfit x all income bonuses. */
+export const tapValue = (s: GameState) => CONFIG.tapValue * RODS[s.rodTier].mult * OUTFITS[s.outfitTier].mult * globalMultiplier(s);
+
+export function tap(s: GameState) { s.taps++; s.fishCaught++; earn(s, tapValue(s)); }
+
+// ---------- gear ----------
+export const canPay = (s: GameState, coins: number, gems = 0) => s.coins >= coins && s.gems >= gems;
+function pay(s: GameState, coins: number, gems = 0) { s.coins -= coins; s.gems -= gems; }
+
+export function buyRod(s: GameState): boolean {
+  const next = RODS[s.rodTier + 1]; if (!next || !canPay(s, next.cost, next.gems)) return false;
+  pay(s, next.cost, next.gems); s.rodTier++; return true;
+}
+export function buyOutfit(s: GameState): boolean {
+  const next = OUTFITS[s.outfitTier + 1]; if (!next || !canPay(s, next.cost, next.gems)) return false;
+  pay(s, next.cost, next.gems); s.outfitTier++; return true;
+}
+
+// ---------- decor ----------
+export const ownsDecor = (s: GameState, id: string) => s.decor.includes(id);
+/** Buy a cosmetic. Skins are equipped as soon as they are bought. */
+export function buyDecor(s: GameState, id: string): boolean {
+  const d = decorById(id);
+  if (!d || ownsDecor(s, id) || !canPay(s, d.cost, d.gems)) return false;
+  pay(s, d.cost, d.gems); s.decor.push(id);
+  if (d.kind === 'sand') s.skins.sand = d.skin!;
+  if (d.kind === 'planks') s.skins.planks = d.skin!;
+  return true;
+}
+/** Switch between skins you own (index 0 is always available). */
+export function equipSkin(s: GameState, kind: 'sand' | 'planks', idx: number): boolean {
+  const owned = idx === 0 || s.decor.some(id => { const d = decorById(id); return d.kind === kind && d.skin === idx; });
+  if (!owned) return false;
+  s.skins[kind] = idx; return true;
+}
 
 export function startCycle(s: GameState, id: StationId): boolean {
   const st = s.stations[id];

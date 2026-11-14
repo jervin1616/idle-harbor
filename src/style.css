@@ -100,3 +100,40 @@ textarea { width:100%; font:inherit; font-size:13px; padding:6px; border:3px sol
 .adscreen.hidden { display:none; }
 .card button.alt { display:block; width:100%; margin-top:10px; background:var(--orange); box-shadow:0 0 0 3px var(--ink), inset 0 -4px 0 var(--orangeD), inset 0 3px 0 #ffb86b; }
 .card #collect, .card #cc { display:block; width:100%; }
+
+/* ---- readability pass: bigger type, darker ink, higher contrast ---- */
+:root { --muted:#4a2f4f; }
+body { font-size:17px; letter-spacing:.2px; }
+.small { color:var(--muted); font-size:15px; }
+.title { font-size:20px; } .info { color:#3d2314; font-size:17px; } .info.sub { color:#5b2f7a; font-size:15px; }
+.hint { font-size:17px; } .rate { font-size:17px; }
+.btns button { font-size:17px; padding:11px 4px; } .amts button { font-size:16px; padding:7px 0; }
+.toast { font-size:17px; } .toast .small { color:var(--muted); }
+.tabs { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-right:34px; }
+.tabs button { font-size:16px; padding:8px 0; }
+.pane p { font-size:16px; } .srow { font-size:17px; } .phead { font-size:18px; }
+.bmeta b { font-size:17px; } .bmeta .small { font-size:15px; } .bt { font-size:15px; color:#3d2314; }
+.grp { font-size:15px; color:#5b2f7a; }
+.sidebtn, .sidebtn small { font-size:13px; }
+.big-btn, .row-btn { font-size:18px; } textarea { font-size:15px; }
+.card p { font-size:17px; } .card h2 { font-size:24px; } .card button { font-size:19px; }
+.gear { padding:8px 0 10px; border-bottom:2px dashed #c9b48a; } .gear b { font-size:19px; } .gtitle { font-size:15px; letter-spacing:1px; text-transform:uppercase; color:#5b2f7a; }
+.drow { display:flex; align-items:center; gap:10px; padding:8px 2px; border-bottom:2px dashed #c9b48a; }
+.dmeta { flex:1; min-width:0; } .dmeta b { font-size:17px; }
+.dbtn { min-width:92px; padding:9px 8px; border:0; background:var(--green); color:#fff; font-size:16px; display:flex; gap:4px; align-items:center; justify-content:center;
+  box-shadow:0 0 0 3px var(--ink), inset 0 -3px 0 var(--greenD), inset 0 2px 0 #9bd16b; text-shadow:2px 2px 0 var(--ink); }
+.dbtn:disabled { background:#8e9ab5; box-shadow:0 0 0 3px var(--ink), inset 0 -3px 0 #5d6a85; color:#f3f5fa; }
+.dbtn.own { background:#c9b48a; color:var(--ink); text-shadow:none; box-shadow:0 0 0 3px var(--ink); }
+/* disabled buttons: dark text on a light plate, readable */
+.btns button:disabled, .big-btn:disabled, .dbtn:disabled { background:#c5cde0; color:#2d1e3e; text-shadow:none;
+  box-shadow:0 0 0 3px var(--ink), inset 0 -3px 0 #8e9ab5; }
+.dbtn.own { background:#9bd16b; color:var(--ink); }
+
+/* gems */
+.gemi { width:20px; height:20px; display:inline-block; flex:none; background:#4fb3d6; clip-path:polygon(50% 0,100% 36%,50% 100%,0 36%);
+  box-shadow:inset -4px -3px 0 #25618f, inset 3px 3px 0 #c9eef2; }
+.gemi.sm { width:13px; height:13px; margin:0 2px 0 4px; vertical-align:-2px; }
+.gempill { display:flex; align-items:center; gap:8px; align-self:flex-start; margin:8px 3px 0; background:var(--ink); color:#c9eef2; padding:3px 12px 3px 7px; font-size:19px;
+  box-shadow:0 0 0 2px #c9eef2; }
+.tabs { grid-template-columns:repeat(4,1fr); } .tabs button { font-size:15px; }
+.dbtn.price { min-width:84px; }
