@@ -1,5 +1,6 @@
 import { CONFIG, StationId } from './config';
 import { GameState, boostMultiplier, incomePerSecond } from './game';
+import { fmt } from './format';
 
 export interface Product {
   id: string; name: string; price: string; kind: 'coins' | 'gems' | 'pass';
@@ -28,7 +29,7 @@ export function packCoins(s: GameState, p: Product): number {
 
 /** Hand over what was bought. Returns a short description for the toast. */
 export function grantProduct(s: GameState, p: Product): string {
-  if (p.kind === 'coins') { const n = packCoins(s, p); s.coins += n; s.totalEarned += n; s.runEarned += n; return `+${n} coins`; }
+  if (p.kind === 'coins') { const n = packCoins(s, p); s.coins += n; s.totalEarned += n; s.runEarned += n; return `+${fmt(n)} coins`; }
   if (p.kind === 'gems') { s.gems += p.gems!; return `+${p.gems} gems`; }
   s.captainPass = true; s.gems += 100; return 'Captain\'s Pass active: x2 income forever, +100 gems';
 }
