@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../src/config';
 import {
   applyOffline, buyManager, buyUpgrade, costForLevels, cycleIncome, fleetTiers, globalMultiplier, incomePerCycle,
-  buyDecor, buyOutfit, buyRod, equipSkin, tapValue, maxAffordable, claimDaily, dailyReady, dailyReward, newState, prestigeGain, setSail, startCycle, tap, tick, upgradeCost,
+  buyDecor, buyOutfit, buyRod, equipSkin, tapValue, buyBait, equipBait, baitFactor, fishIndex, recruit, recordCatches, rollFish, unlockedFish, onFishDiscovered, crewBonus, maxAffordable, claimDaily, dailyReady, dailyReward, newState, prestigeGain, setSail, startCycle, tap, tick, upgradeCost,
 } from '../src/game';
 import { checkAchievements, ACHIEVEMENTS } from '../src/achievements';
+import { FISH, BAITS } from '../src/fish';
+import { CREW } from '../src/crew';
 import { PRODUCTS, grantProduct, packCoins } from '../src/shop';
 import { exportSave, importSave, parseSave } from '../src/save';
 import { fmt } from '../src/format';
@@ -30,11 +32,11 @@ describe('core loop', () => {
     expect(costForLevels('dock', 0, n)).toBeLessThanOrEqual(5000);
     expect(costForLevels('dock', 0, n + 1)).toBeGreaterThan(5000);
   });
-  it('milestones double income at 5, 10, 25, 50, 75, 100', () => {
+  it('milestones lift income gently at 5, 10, 25, 50, 75, 100', () => {
     expect(incomePerCycle('dock', 4)).toBe(4);
-    expect(incomePerCycle('dock', 5)).toBe(10);
-    expect(incomePerCycle('dock', 10)).toBe(40);
-    expect(incomePerCycle('dock', 100)).toBe(100 * 64);
+    expect(incomePerCycle('dock', 5)).toBeCloseTo(5 * 1.4);
+    expect(incomePerCycle('dock', 10)).toBeCloseTo(10 * 1.4 * 1.4);
+    expect(incomePerCycle('dock', 100)).toBeCloseTo(100 * Math.pow(1.4, 6));
   });
   it('manual cycle pays once', () => {
     const s = rich(); buyUpgrade(s, 'dock'); const c0 = s.coins;
@@ -53,7 +55,7 @@ describe('core loop', () => {
   });
   it('fleet earns offline once managed', () => {
     const s = rich(); buyUpgrade(s, 'fleet'); buyManager(s, 'fleet'); const c0 = s.coins;
-    applyOffline(s, 60); expect(s.coins - c0).toBe(60 / 6 * 60);
+    applyOffline(s, 60); expect(s.coins - c0).toBeCloseTo(60 / 6 * 60 * fishIndex(s), 5);   // Cod unlocks with the fleet
   });
 });
 
@@ -111,6 +113,67 @@ describe('gear and decor', () => {
     expect(old.gems).toBe(8);
   });
   it('broke players cannot buy decor', () => { const s = newState(); expect(buyDecor(s, 'bench')).toBe(false); });
+});
+
+describe('fish and crew', () => {
+  it('only sardines at the start, and the price index starts at 1', () => {
+    const s = newState(); expect(unlockedFish(s).map(f => f.id)).toEqual(['sardine']); expect(fishIndex(s)).toBeCloseTo(1);
+  });
+  it('better species unlock with levels and rods, raising the price index', () => {
+    const s = newState(); s.stations.dock.level = 30; s.stations.fleet.level = 10; s.rodTier = 2;
+    const ids = unlockedFish(s).map(f => f.id);
+    for (const id of ['sardine', 'anchovy', 'perch', 'mackerel', 'cod', 'haddock', 'puffer']) expect(ids).toContain(id);
+    expect(ids).not.toContain('tuna'); expect(fishIndex(s)).toBeGreaterThan(1.3);
+  });
+  it('the price index lifts income', () => {
+    const s = rich(); buyUpgrade(s, 'dock'); const a = cycleIncome(s, 'dock'); s.stations.dock.level = 6; const b = cycleIncome(s, 'dock') / incomePerCycle('dock', 6);
+    expect(a).toBeCloseTo(1); expect(b).toBeGreaterThan(1.01);
+  });
+  it('rolling respects weights and unlocks', () => {
+    const s = newState(); s.stations.dock.level = 6;
+    expect(rollFish(s, () => 0).id).toBe('sardine'); expect(rollFish(s, () => 0.999).id).toBe('anchovy');
+  });
+  it('first catch of a species pays gems and fires an event; repeats do not', () => {
+    const s = newState(); const seen: string[] = []; onFishDiscovered(f => seen.push(f.id));
+    tap(s, () => 0); expect(s.fishLog.sardine).toBe(1); expect(s.gems).toBe(1); tap(s, () => 0); expect(s.gems).toBe(1); expect(seen).toContain('sardine');
+  });
+  it('big batches (offline) are recorded and spread by rarity', () => {
+    const s = newState(); s.stations.dock.level = 100; s.stations.fleet.level = 100; s.rodTier = 5;
+    recordCatches(s, 10000); const total = Object.values(s.fishLog).reduce((a, b) => a + b, 0);
+    expect(total).toBe(10000); expect(s.fishCaught).toBe(10000); expect(Object.keys(s.fishLog).length).toBe(FISH.length);
+    expect(s.fishLog.sardine).toBeGreaterThan(s.fishLog.leviathan);
+  });
+  it('crew bonuses apply to their station, taps, or everything', () => {
+    const s = rich(); expect(crewBonus(s, 'dock')).toBe(1);
+    expect(recruit(s, 'salty')).toBe(true); expect(recruit(s, 'salty')).toBe(false); expect(crewBonus(s, 'dock')).toBeCloseTo(1.1); expect(crewBonus(s, 'shed')).toBe(1);
+    recruit(s, 'marina'); expect(crewBonus(s, 'tap')).toBeCloseTo(1.25); recruit(s, 'biscuit'); expect(crewBonus(s, 'shed')).toBeCloseTo(1.05); expect(crewBonus(s, 'dock')).toBeCloseTo(1.15);
+  });
+  it('gem crew need gems, and everyone can be recruited by a rich player', () => {
+    const s = newState(); s.coins = 1e15; expect(recruit(s, 'marlowe')).toBe(false); s.gems = 30; expect(recruit(s, 'marlowe')).toBe(true);
+    const r = rich(); r.gems = 1000; for (const c of CREW) recruit(r, c.id); expect(r.crew.length).toBe(CREW.length);
+  });
+});
+
+describe('bait', () => {
+  it('plain bait changes nothing; the right bait multiplies its targets', () => {
+    const s = newState(); s.stations.dock.level = 100;
+    const perch = FISH.find(f => f.id === 'perch')!, sardine = FISH.find(f => f.id === 'sardine')!;
+    expect(baitFactor(s, perch)).toBe(1);
+    s.coins = 1e6; expect(buyBait(s, 'worm')).toBe(true); expect(s.bait).toBe('worm');
+    expect(baitFactor(s, perch)).toBe(4); expect(baitFactor(s, sardine)).toBe(1);
+  });
+  it('baits must be owned to equip, gem baits need gems, and you can switch back', () => {
+    const s = newState(); s.coins = 1e12;
+    expect(equipBait(s, 'worm')).toBe(false); expect(buyBait(s, 'glow')).toBe(false); s.gems = 15; expect(buyBait(s, 'glow')).toBe(true);
+    expect(buyBait(s, 'glow')).toBe(false); expect(equipBait(s, 'plain')).toBe(true); expect(s.bait).toBe('plain');
+  });
+  it('bait really shifts what gets caught', () => {
+    const s = newState(); s.stations.dock.level = 100; s.coins = 1e6; buyBait(s, 'worm');
+    let perch = 0; for (let i = 0; i < 4000; i++) if (rollFish(s).id === 'perch') perch++;
+    const s2 = newState(); s2.stations.dock.level = 100; let perch2 = 0; for (let i = 0; i < 4000; i++) if (rollFish(s2).id === 'perch') perch2++;
+    expect(perch).toBeGreaterThan(perch2 * 1.2);   // about 26% of catches vs 18%, since four species share the boost
+  });
+  it('every bait only targets real species', () => { for (const b of BAITS) for (const id of b.targets) expect(FISH.some(f => f.id === id)).toBe(true); });
 });
 
 describe('shop (test mode)', () => {

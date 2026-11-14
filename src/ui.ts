@@ -1,6 +1,6 @@
 import { CONFIG, OUTFITS, RODS, FLEET_TIERS, FLEET_TIER_LEVELS, StationId, stationById } from './config';
 import {
-  GameState, canPay, claimDaily, dailyReady, dailyReward, buyManager, buyUpgrade, costForLevels, cycleIncome, incomePerSecond, maxAffordable, nextMilestone, prestigeGain, upgradeCost,
+  GameState, markCutscene, seenCutscene, canPay, claimDaily, dailyReady, dailyReward, buyManager, buyUpgrade, costForLevels, cycleIncome, incomePerSecond, maxAffordable, nextMilestone, prestigeGain, upgradeCost,
 } from './game';
 import { Achievement } from './achievements';
 import { fmt, fmtDuration } from './format';
@@ -8,8 +8,10 @@ import { save } from './save';
 import { createScene } from './scene';
 import { makeIcon, stationIcon } from './icons';
 import { mountMenu } from './menu';
-import { sfx } from './audio';
+import { sfx, music } from './audio';
+import { onFishDiscovered } from './game';
 import { setPurchasePresenter } from './payments';
+import { playScene } from './cutscene';
 import { setAdPresenter, showRewarded } from './ads';
 
 export function mountUI(root: HTMLElement, s: GameState) {
@@ -72,8 +74,9 @@ export function mountUI(root: HTMLElement, s: GameState) {
   const toast = (html: string) => { queue.push(html); pump(); };
 
   let unseen = 0;
-  const menu = mountMenu($('menu'), s, { toast, closed: () => { unseen = 0; } });
-  $('menubtn').addEventListener('click', () => { open(null); unseen = 0; menu.open('gear'); sfx.tap(); });
+  const menu = mountMenu($('menu'), s, { toast, closed: () => { unseen = 0; }, music: on => (on ? music.start() : music.stop()), sailed: () => { if (!seenCutscene(s, 'voyage')) void playStory('voyage'); } });
+  onFishDiscovered(f => { sfx.badge(); toast(`<b>New fish: ${f.name}!</b><br><span class="small">Sells for x${f.price} sardine · +${f.gems} gems</span>`); });
+  $('menubtn').addEventListener('click', () => { open(null); unseen = 0; menu.open(null); sfx.tap(); });
 
   $('bico').appendChild(makeIcon('bolt', 'ico menu-ico'));
   $('cico').appendChild(makeIcon('chest', 'ico menu-ico'));
@@ -114,6 +117,16 @@ export function mountUI(root: HTMLElement, s: GameState) {
   });
 
   const scene = createScene($<HTMLCanvasElement>('scene'), s, id => { open(id); });
+
+  // ----- story scenes -----
+  let storyBusy = false;
+  async function playStory(id: string) {
+    if (storyBusy) return;
+    storyBusy = true; open(null); menu.close(); markCutscene(s, id); save(s);
+    await playScene({ stage: root.querySelector<HTMLElement>('.stage')!, canvas: $<HTMLCanvasElement>('scene'), setFx: scene.setFx }, id);
+    storyBusy = false;
+  }
+  const canPlayStory = () => !storyBusy && !menu.isOpen() && modal.classList.contains('hidden') && adscreen.classList.contains('hidden');
   const coinsEl = $('coins'), rateEl = $('rate'), hint = $('hint'), gemsEl = $('gems'), dot = $('mdot'), btxt = $('btxt'), chestbtn = $('chestbtn'), boostbtn = $('boostbtn');
   let lastMenuRender = 0;
 
@@ -178,5 +191,5 @@ export function mountUI(root: HTMLElement, s: GameState) {
     for (const a of list) toast(`<b>Badge: ${a.name}</b><br><span class="small">${a.desc}<br>+${Math.round(CONFIG.achievementBonus * 100)}% income · +${a.gems} gems</span>`);
   }
 
-  return { render, showWelcome, toast, badgeUnlocked };
+  return { render, showWelcome, toast, badgeUnlocked, playStory, canPlayStory };
 }

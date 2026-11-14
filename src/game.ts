@@ -1,4 +1,6 @@
 import { decorById } from './decor';
+import { BAITS, FISH, FISH_INDEX_FACTOR, Fish, baitById } from './fish';
+import { CREW, crewById } from './crew';
 import { CONFIG, OUTFITS, RODS, DOCK_FISHER_LEVELS, FLEET_BOAT_GAP, FLEET_TIER_LEVELS, StationId, stationById } from './config';
 
 // Numbers are plain doubles (safe to ~1e308); with 100 levels and prestige that is far more than enough.
@@ -21,7 +23,7 @@ export interface GameState {
   fishCaught: number;
   playSeconds: number;
   achievements: string[];
-  settings: { sound: boolean };
+  settings: { sound: boolean; music: boolean };
   boostLeft: number;       // seconds of ad boost remaining (counts down only while playing)
   lastDaily: number;       // ms timestamp of last daily chest
   adsWatched: number;
@@ -31,6 +33,11 @@ export interface GameState {
   outfitTier: number;      // index into OUTFITS
   decor: string[];         // owned cosmetic ids
   skins: { sand: number; planks: number };   // equipped skin indexes (0 = default)
+  fishLog: Record<string, number>;           // how many of each species you have caught
+  crew: string[];                            // recruited crew ids
+  baits: string[];                           // owned baits (plain is always available)
+  bait: string;                              // equipped bait id
+  cutscenes: string[];                       // story scenes already shown
   stations: Record<StationId, StationState>;
   lastSaved: number;       // ms timestamp
 }
@@ -43,7 +50,7 @@ const blankStations = (): Record<StationId, StationState> => {
 export function newState(now = Date.now()): GameState {
   return {
     version: 2, coins: 0, totalEarned: 0, runEarned: 0, pearls: 0, prestiges: 0, taps: 0, fishCaught: 0,
-    playSeconds: 0, achievements: [], settings: { sound: true }, boostLeft: 0, lastDaily: 0, adsWatched: 0, gems: 0, captainPass: false, rodTier: 0, outfitTier: 0, decor: [], skins: { sand: 0, planks: 0 }, lastSaved: now, stations: blankStations(),
+    playSeconds: 0, achievements: [], settings: { sound: true, music: true }, boostLeft: 0, lastDaily: 0, adsWatched: 0, gems: 0, captainPass: false, rodTier: 0, outfitTier: 0, decor: [], skins: { sand: 0, planks: 0 }, fishLog: {}, crew: [], baits: ['plain'], bait: 'plain', cutscenes: [], lastSaved: now, stations: blankStations(),
   };
 }
 
@@ -93,11 +100,23 @@ export const pearlMultiplier = (s: GameState) => 1 + s.pearls * CONFIG.pearlBonu
 export const badgeMultiplier = (s: GameState) => 1 + s.achievements.length * CONFIG.achievementBonus;
 export const boostMultiplier = (s: GameState) => (s.boostLeft > 0 ? CONFIG.boostMultiplier : 1);
 export const passMultiplier = (s: GameState) => (s.captainPass ? 2 : 1);
-export const globalMultiplier = (s: GameState) => pearlMultiplier(s) * badgeMultiplier(s) * boostMultiplier(s) * passMultiplier(s);
+
+// ---------- fish: market price index ----------
+export const fishUnlocked = (s: GameState, f: Fish) =>
+  (!f.req.dock || s.stations.dock.level >= f.req.dock) && (!f.req.fleet || s.stations.fleet.level >= f.req.fleet) && (!f.req.rod || s.rodTier >= f.req.rod);
+export const unlockedFish = (s: GameState) => FISH.filter(f => fishUnlocked(s, f));
+/** Every species you unlock raises what your whole catch sells for. 1.0 with just sardines. */
+export const fishIndex = (s: GameState) => 1 - FISH_INDEX_FACTOR + FISH_INDEX_FACTOR * unlockedFish(s).reduce((n, f) => n + f.price, 0);
+
+// ---------- crew bonuses ----------
+export const crewBonus = (s: GameState, target: StationId | 'tap') =>
+  1 + CREW.filter(c => s.crew.includes(c.id) && (c.target === target || c.target === 'all')).reduce((n, c) => n + c.bonus, 0);
+
+export const globalMultiplier = (s: GameState) => pearlMultiplier(s) * badgeMultiplier(s) * boostMultiplier(s) * passMultiplier(s) * fishIndex(s);
 
 /** What one cycle actually pays right now. */
 export function cycleIncome(s: GameState, id: StationId, level = s.stations[id].level): number {
-  return incomePerCycle(id, level) * globalMultiplier(s);
+  return incomePerCycle(id, level) * globalMultiplier(s) * crewBonus(s, id);
 }
 
 export function incomePerSecond(s: GameState, id: StationId): number {
@@ -120,9 +139,46 @@ function earn(s: GameState, amount: number) {
 }
 
 /** Coins one tap earns: base x rod x outfit x all income bonuses. */
-export const tapValue = (s: GameState) => CONFIG.tapValue * RODS[s.rodTier].mult * OUTFITS[s.outfitTier].mult * globalMultiplier(s);
+export const tapValue = (s: GameState) => CONFIG.tapValue * RODS[s.rodTier].mult * OUTFITS[s.outfitTier].mult * globalMultiplier(s) * crewBonus(s, 'tap');
 
-export function tap(s: GameState) { s.taps++; s.fishCaught++; earn(s, tapValue(s)); }
+// ---------- catching fish ----------
+const discoverListeners: ((f: Fish) => void)[] = [];
+export const onFishDiscovered = (fn: (f: Fish) => void) => { discoverListeners.push(fn); };
+
+function logCatch(s: GameState, f: Fish, n = 1) {
+  const first = !s.fishLog[f.id];
+  s.fishLog[f.id] = (s.fishLog[f.id] ?? 0) + n;
+  if (first) { s.gems += f.gems; discoverListeners.forEach(fn => fn(f)); }
+}
+/** Pick a species among those you have unlocked, favouring the common ones. */
+export function rollFish(s: GameState, rnd: () => number = Math.random): Fish {
+  const pool = unlockedFish(s); const w = (f: Fish) => f.weight * baitFactor(s, f);
+  const total = pool.reduce((n, f) => n + w(f), 0);
+  let r = rnd() * total;
+  for (const f of pool) { r -= w(f); if (r <= 0) return f; }
+  return pool[pool.length - 1];
+}
+/** How much more likely the equipped bait makes this species. */
+export function baitFactor(s: GameState, f: Fish): number {
+  const b = baitById(s.bait); return b && b.targets.includes(f.id) ? b.mult : 1;
+}
+/** Record n fish caught (tapping, crews, boats, offline). Big batches are spread by rarity. */
+export function recordCatches(s: GameState, n: number, rnd: () => number = Math.random) {
+  if (n <= 0) return;
+  s.fishCaught += n;
+  if (n <= 25) { for (let i = 0; i < n; i++) logCatch(s, rollFish(s, rnd)); return; }
+  const pool = unlockedFish(s); const w = (f: Fish) => f.weight * baitFactor(s, f); const total = pool.reduce((a, f) => a + w(f), 0);
+  let left = n;
+  for (const f of pool) { const k = Math.floor(n * w(f) / total); if (k > 0) { logCatch(s, f, k); left -= k; } }
+  for (let i = 0; i < left; i++) logCatch(s, rollFish(s, rnd));
+}
+
+/** One tap on the sea: you catch one fish. Returns the species so the scene can show it. */
+export function tap(s: GameState, rnd: () => number = Math.random): Fish {
+  s.taps++; earn(s, tapValue(s));
+  const f = rollFish(s, rnd); s.fishCaught++; logCatch(s, f);
+  return f;
+}
 
 // ---------- gear ----------
 export const canPay = (s: GameState, coins: number, gems = 0) => s.coins >= coins && s.gems >= gems;
@@ -202,14 +258,14 @@ export function tick(s: GameState, dt: number): number {
       const cycles = Math.floor(st.progress / c.cycleSeconds);
       if (cycles > 0) {
         earn(s, cycles * cycleIncome(s, c.id));
-        s.fishCaught += cycles * fishForCycle(s, c.id);
+        recordCatches(s, cycles * fishForCycle(s, c.id));
         st.progress -= cycles * c.cycleSeconds;
       }
     } else if (st.running) {
       st.progress += dt;
       if (st.progress >= c.cycleSeconds) {
         earn(s, cycleIncome(s, c.id));
-        s.fishCaught += fishForCycle(s, c.id);
+        recordCatches(s, fishForCycle(s, c.id));
         st.running = false; st.progress = 0;
       }
     }
@@ -260,3 +316,27 @@ export function claimDaily(s: GameState, doubled: boolean, now = Date.now()): nu
   s.coins += amount; s.totalEarned += amount; s.runEarned += amount; s.lastDaily = now;
   return amount;
 }
+
+// ---------- crew ----------
+export const hasCrew = (s: GameState, id: string) => s.crew.includes(id);
+export function recruit(s: GameState, id: string): boolean {
+  const c = crewById(id);
+  if (!c || hasCrew(s, id) || !canPay(s, c.cost, c.gems)) return false;
+  pay(s, c.cost, c.gems); s.crew.push(id); return true;
+}
+
+// ---------- story scenes ----------
+export const seenCutscene = (s: GameState, id: string) => s.cutscenes.includes(id);
+export function markCutscene(s: GameState, id: string) { if (!s.cutscenes.includes(id)) s.cutscenes.push(id); }
+
+// ---------- bait ----------
+export function buyBait(s: GameState, id: string): boolean {
+  const b = baitById(id);
+  if (!b || s.baits.includes(id) || !canPay(s, b.cost, b.gems)) return false;
+  pay(s, b.cost, b.gems); s.baits.push(id); s.bait = id; return true;   // new bait is equipped right away
+}
+export function equipBait(s: GameState, id: string): boolean {
+  if (!s.baits.includes(id)) return false;
+  s.bait = id; return true;
+}
+export const allBaits = BAITS;

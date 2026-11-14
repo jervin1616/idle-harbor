@@ -1,9 +1,11 @@
 import { CONFIG, FLEET_TIERS, OUTFITS, RODS, StationId } from './config';
 import { DECOR } from './decor';
+import { BAITS, FISH } from './fish';
+import { CREW } from './crew';
 import { GameState, fleetTiers } from './game';
 
 export interface Achievement {
-  id: string; name: string; desc: string; group: 'Fishing' | 'Coins' | 'Harbor' | 'Crew' | 'Fleet' | 'Gear' | 'Decor' | 'Voyages';
+  id: string; name: string; desc: string; group: 'Fishing' | 'Coins' | 'Harbor' | 'Crew' | 'Fleet' | 'Gear' | 'Decor' | 'Collection' | 'Voyages';
   target: number; gems: number; value: (s: GameState) => number;
 }
 
@@ -47,6 +49,13 @@ FLEET_TIERS.forEach((name, i) => {
   .forEach(([name, n], i) => add({ id: `fit${n}`, name: name as string, group: 'Gear', desc: `Wear the ${OUTFITS[(n as number) - 1].name}`, target: n as number, gems: [5, 10, 25][i], value: s => s.outfitTier + 1 }));
 [['Home Improvement', 3], ['Beach Resort', 9], ['Showpiece Harbor', DECOR.length]]
   .forEach(([name, n], i) => add({ id: `decor${n}`, name: name as string, group: 'Decor', desc: `Own ${n} cosmetics`, target: n as number, gems: [5, 10, 25][i], value: s => s.decor.length }));
+
+[['Curious Angler', 4], ['Fish Book Keeper', 8], ['Species Hunter', 12], ['Master of the Deep', FISH.length]]
+  .forEach(([name, n], i) => add({ id: `species${n}`, name: name as string, group: 'Collection', desc: `Catch ${n} different kinds of fish`, target: n as number, gems: [5, 10, 15, 30][i], value: s => Object.keys(s.fishLog).length }));
+[['Tackle Box', 3], ['Bait Master', BAITS.length]]
+  .forEach(([name, n], i) => add({ id: `bait${n}`, name: name as string, group: 'Collection', desc: `Own ${n} different baits`, target: n as number, gems: [5, 15][i], value: s => s.baits.length }));
+[['New Friends', 3], ['Harbor Family', 8], ['Everyone Aboard', CREW.length]]
+  .forEach(([name, n], i) => add({ id: `crew${n}`, name: name as string, group: 'Collection', desc: `Recruit ${n} crew members`, target: n as number, gems: [5, 12, 30][i], value: s => s.crew.length }));
 
 [['Set Sail', 1], ['Seasoned Sailor', 3], ['Pearl Diver', 10]]
   .forEach(([name, n], i) => add({ id: `sail${n}`, name: name as string, group: 'Voyages', desc: `Set sail ${n === 1 ? 'for the first time' : `${n} times`}`, target: n as number, gems: [10, 20, 40][i], value: s => s.prestiges }));

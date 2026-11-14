@@ -19,9 +19,10 @@ export const CONFIG = {
   offlineMinShowSeconds: 60,         // show "welcome back" only if away at least this long
   saveIntervalSeconds: 10,
   saveKey: 'idle-harbor-save-v1',
-  // Income multiplier applied at these station levels (stacks): x2 each, so level 100 pays x64.
+  // Income multiplier applied at these station levels (stacks): x1.4 each, so level 100 pays about x7.5.
+  // Bigger growth comes from unlocking pricier fish (see fish.ts) and from crew, not from steep level multipliers.
   milestoneLevels: [5, 10, 25, 50, 75, 100],
-  milestoneMultiplier: 2,
+  milestoneMultiplier: 1.4,
   // Permanent bonuses (additive): each badge adds this much income, each Pearl adds this much.
   achievementBonus: 0.02,
   pearlBonus: 0.10,

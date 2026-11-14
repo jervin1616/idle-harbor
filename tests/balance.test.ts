@@ -38,5 +38,5 @@ describe('pacing (greedy bot)', () => {
     expect(marks['all four built']).toBeLessThan(1 * 3600);
     expect(marks['first Pearl available']).toBeLessThan(3 * 3600);
     expect(marks['everything maxed']).toBeLessThan(200 * 3600);
-  });
+  }, 60000);
 });

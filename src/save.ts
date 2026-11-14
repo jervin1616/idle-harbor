@@ -18,6 +18,11 @@ export function parseSave(raw: string): GameState | null {
       out.stations[k] = { ...base.stations[k], ...out.stations[k] };
       out.stations[k].level = Math.max(0, Math.min(CONFIG.maxLevel, Math.floor(out.stations[k].level) || 0));
     }
+    out.fishLog = (p.fishLog && typeof p.fishLog === 'object' && !Array.isArray(p.fishLog)) ? Object.fromEntries(Object.entries(p.fishLog).filter(([, v]) => typeof v === 'number' && v > 0)) as Record<string, number> : {};
+    out.baits = Array.isArray(p.baits) ? Array.from(new Set(['plain', ...p.baits.filter((x: unknown) => typeof x === 'string')])) : ['plain'];
+    out.bait = typeof p.bait === 'string' && out.baits.includes(p.bait) ? p.bait : 'plain';
+    out.crew = Array.isArray(p.crew) ? p.crew.filter((x: unknown) => typeof x === 'string') : [];
+    out.cutscenes = Array.isArray(p.cutscenes) ? p.cutscenes.filter((x: unknown) => typeof x === 'string') : [];
     if (!Array.isArray(out.decor)) out.decor = [];
     out.decor = out.decor.filter(x => typeof x === 'string');
     out.skins = { ...base.skins, ...p.skins };

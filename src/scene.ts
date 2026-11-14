@@ -1,4 +1,5 @@
 import { CONFIG, OUTFITS, RODS, StationId, stationById } from './config';
+import { CREW } from './crew';
 import { PLANK_SKINS, SAND_SKINS } from './decor';
 import { GameState, cycleIncome, dockFishers, fleetTiers, startCycle, tap, tapValue, upgradeCost } from './game';
 import { sfx } from './audio';
@@ -14,9 +15,12 @@ import f4 from './assets/boats/fleet4.png';
 import f5 from './assets/boats/fleet5.png';
 import f6 from './assets/boats/fleet6.png';
 import f7 from './assets/boats/fleet7.png';
-const loadImg = (u: string) => { const i = new Image(); i.src = u; return i; };
+const loaded: Promise<void>[] = [];
+const loadImg = (u: string) => { const i = new Image(); loaded.push(new Promise(r => { i.onload = () => r(); i.onerror = () => r(); })); i.src = u; return i; };
 const fleetSprites = [f1, f2, f3, f4, f5, f6, f7].map(loadImg);   // index = tier - 1
 const raftImg = loadImg(raftUrl);
+/** Resolves when every sprite has loaded (the loading screen waits for this). */
+export const assetsReady: Promise<unknown> = Promise.all(loaded);
 // Where the fleet's three boats float (x, y in sea coordinates). Listed back to front.
 const BOAT_SPOTS: [number, number][] = [[292, 128], [222, 164], [306, 198]];
 const BASE_SH = 340;
@@ -149,9 +153,11 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
   window.addEventListener('resize', layout);
   if (canvas.parentElement && 'ResizeObserver' in window) new ResizeObserver(() => layout()).observe(canvas.parentElement);
   const pops: Pop[] = [];
+  let fx: 'fireworks' | 'sail' | null = null; let fxStart = 0;
+  const sparks: { x: number; y: number; vx: number; vy: number; life: number; col: string }[] = [];
   const splashes: Splash[] = [];
   let lastTap = -10;
-  let cast: { x: number; y: number; t0: number } | null = null;   // where the player's fisherman last cast to
+  let cast: { x: number; y: number; t0: number; color: string } | null = null;   // where the player's fisherman last cast to
   const prev: Record<StationId, { p: number; run: boolean }> = {
     dock: { p: 0, run: false }, shed: { p: 0, run: false }, market: { p: 0, run: false }, fleet: { p: 0, run: false },
   };
@@ -180,11 +186,11 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
       if (inRect(x, y, rx, ry, rw, rh)) { startCycle(s, id); onOpen(id); return; }
     }
     onOpen(null);
-    tap(s); startCycle(s, 'dock'); sfx.tap();
+    const caught = tap(s); startCycle(s, 'dock'); sfx.tap();
     lastTap = now;
     const tx = Math.min(Math.max(x, 175), SW - 12), ty = Math.min(Math.max(y, DECK_Y + 18), SAND_Y - 16);   // always lands in open water
-    cast = { x: tx, y: ty, t0: now };
-    pops.push({ x: tx, y: ty - 10, t0: now + 0.5, text: `+${fmt(tapValue(s))}` });
+    cast = { x: tx, y: ty, t0: now, color: caught.color };
+    pops.push({ x: tx, y: ty - 10, t0: now + 0.5, text: `+${fmt(tapValue(s))} ${caught.name}` });
     splashes.push({ x: tx, y: ty + 2, t0: now + 0.22 });
   });
 
@@ -380,7 +386,7 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
         else { reel = (ca - 0.6) / 0.35; bx = cast.x + (tx - cast.x) * reel; by = cast.y + (ty - cast.y) * reel - Math.sin(reel * Math.PI) * 24; }
       }
       c.beginPath(); c.moveTo(tx, ty); c.lineTo(bx, by - 2); c.lineWidth = 1; c.strokeStyle = 'rgba(255,248,232,.85)'; c.stroke();
-      if (reel >= 0) fish(c, bx, by, -(reel - 0.5) * 2.4, 0.95, '#ff9f43');
+      if (reel >= 0) fish(c, bx, by, -(reel - 0.5) * 2.4, 0.95, cast?.color ?? '#ff9f43');
       else { c.beginPath(); c.arc(bx, by, 3, 0, TAU); paint(c, '#e8553d', 1.2); c.beginPath(); c.arc(bx, by - 1, 3, Math.PI, 0); c.fillStyle = '#fff'; c.fill(); }
       if (u > 0 && u < 1 && !(me && ca >= 0)) fish(c, bx + u * 8, by - 6 - Math.sin(u * Math.PI) * 26, -(u - 0.5) * 2.4, 0.85, '#ff9f43');
     }
@@ -636,6 +642,19 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
     }
   }
 
+  // Hired crew stroll back and forth along the boardwalk.
+  function crewWalkers(c: Ctx, t: number) {
+    let lane = 0;
+    for (const m of CREW) {
+      if (!s.crew.includes(m.id) || m.id === 'biscuit') continue;
+      const seed = (m.id.charCodeAt(0) * 7 + m.id.length * 13) % 100;
+      const speed = 10 + (seed % 9), span = 300, ph = (t * speed + seed * 9) % (2 * span);
+      const x = 28 + (ph < span ? ph : 2 * span - ph), dir = ph < span ? 1 : -1;
+      const y = BASE_Y + 22 + (lane++ % 3) * 14;
+      person(c, x, y, 0.82, { shirt: m.shirt, hat: m.hat, hatColor: m.hatColor, flip: dir, bob: Math.sin(t * 9 + seed) * 0.8, arm: 0.5 + Math.sin(t * 9 + seed) * 0.5 });
+    }
+  }
+
   function lockOverlay(c: Ctx, x: number, y: number, w: number, h: number) {
     rr(c, x, y, w, h, 6); c.fillStyle = 'rgba(255,241,201,.62)'; c.fill(); c.lineWidth = 1.5; c.setLineDash([4, 3]); c.strokeStyle = '#8a4f7d'; c.stroke(); c.setLineDash([]);
     const cx = x + w / 2, cy = y + h / 2;
@@ -660,6 +679,27 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
     }
   }
 
+  // Story-scene effects drawn over the whole screen: fireworks in the sky, or a big ship sailing past.
+  function drawFx(c: Ctx, t: number) {
+    if (fx === 'fireworks' && Math.random() < 0.05) {
+      const bx = 40 + Math.random() * 280, by = dyTop + 30 + Math.random() * 120, col = ['#ffd75e', '#f4a99a', '#8fd6e8', '#9bd16b', '#fff8e8'][Math.floor(Math.random() * 5)];
+      for (let k = 0; k < 30; k++) { const a = (k / 30) * TAU, sp = 0.8 + Math.random() * 1.6; sparks.push({ x: bx, y: by, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 1, col }); }
+    }
+    for (let i = sparks.length - 1; i >= 0; i--) {
+      const p = sparks[i]; p.x += p.vx; p.y += p.vy; p.vy += 0.03; p.life -= 0.016;
+      if (p.life <= 0) { sparks.splice(i, 1); continue; }
+      c.globalAlpha = Math.min(1, p.life * 1.6); dot(c, p.x, p.y, 2, p.col); c.globalAlpha = 1;
+    }
+    if (fx === 'sail') {
+      const spr = fleetSprites[6];
+      if (spr.complete && spr.naturalWidth) {
+        const x = -110 + ((t - fxStart) * 34) % (SW + 220), y = dyTop + WATER_Y + 34 + Math.round(Math.sin(t * 1.4) * 1) * 2;
+        c.imageSmoothingEnabled = false;
+        c.drawImage(spr, Math.round(x), y - spr.naturalHeight * 2, spr.naturalWidth * 2, spr.naturalHeight * 2);
+      }
+    }
+  }
+
   function draw(t: number) {
     fit(); detect(t);
     const c = ctx;
@@ -674,14 +714,15 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
     c.restore();
     c.save(); c.translate(0, dy);
     raft(c, t); pier(c, t, pd); land(c, t); props(c, t); decorBeach(c, t);
-    shed(c, t, phase('shed')); market(c, t, phase('market')); decorBoard(c, t);
+    shed(c, t, phase('shed')); market(c, t, phase('market')); crewWalkers(c, t); decorBoard(c, t);
     badge(c, 'dock', 20, DECK_Y - 58, t);
     effects(c, t);
     c.restore();
     pines(c, t);
+    drawFx(c, t);
     quantize(c.getImageData(0, 0, RW, RH), outImg);
     vis.putImageData(outImg, 0, 0);
   }
 
-  return { draw };
+  return { draw, setFx: (name?: 'fireworks' | 'sail' | null) => { fx = name ?? null; fxStart = performance.now() / 1000; sparks.length = 0; } };
 }

@@ -11,13 +11,17 @@
 
 ## What is in the game
 - **Four stations**, each levels 0-100: Fishing Dock, Cleaning Shed, Fishing Fleet, Market Stall.
-  Income per cycle = base x level x milestone multiplier (x2 at levels 5, 10, 25, 50, 75, 100 = x64).
+  Income per cycle = base x level x milestone multiplier (x1.4 at levels 5, 10, 25, 50, 75, 100) x market price index x crew bonus x Pearls/badges.
 - **Managers** automate a station (also while the app is closed; offline earnings capped at 4 hours).
 - **Fishing Fleet** boats upgrade through 7 tiers: Rowboat, Skiff, Mast Boat, Sailboat, Fishing Cutter, Trawler, Grand Schooner. Up to 3 boats at once.
 - **Bulk buy**: x1, x10, x25, MAX.
 - **53 badges** (taps, fish caught, coins, station levels, crew, boats, voyages, time played). Each adds +2% income.
 - **Set Sail** prestige, **stats**, **settings** (sound, save export/import, erase), generated sound effects.
 - Every balance number lives in `src/config.ts`. `tests/balance.test.ts` simulates a greedy player to check pacing.
+
+- **Fish book**: 16 species with their own sell prices. Unlocking pricier species (via dock level, fleet level, and rod tier) raises the market price index that multiplies all income. First catch of each species pays gems.
+- **Crew**: 15 recruitable characters (coins or gems) with station, tap, or global bonuses; they walk the boardwalk.
+- **Loading screen and story scenes** (intro, Harbor Town, first voyage, grand schooner, master of the deep).
 
 ## Still to build
 Rewarded ads (AdMob test IDs), Android build via Capacitor, Play Store listing, daily rewards, crew/fish collection.
