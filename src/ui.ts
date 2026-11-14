@@ -1,10 +1,11 @@
 import { CONFIG, StationId } from './config';
 import {
   GameState, buyManager, buyUpgrade, incomePerCycle, incomePerSecond,
-  startCycle, tap, upgradeCost,
+  startCycle, upgradeCost,
 } from './game';
 import { fmt, fmtDuration } from './format';
 import { save } from './save';
+import { createScene } from './scene';
 
 interface Row {
   id: StationId; root: HTMLElement; bar: HTMLElement; title: HTMLElement; info: HTMLElement;
@@ -13,20 +14,19 @@ interface Row {
 
 export function mountUI(root: HTMLElement, s: GameState) {
   root.innerHTML = `
-    <header><h1>⚓ Idle Harbor</h1>
-      <div class="coins">🪙 <span id="coins">0</span></div>
-      <div class="rate" id="rate"></div></header>
-    <button id="tap" class="tap">🌊 Tap the dock to fish<br><small>+${CONFIG.tapValue} coin</small></button>
-    <main id="stations"></main>
+    <div class="stage">
+      <canvas id="scene"></canvas>
+      <div class="hud"><div class="pill"><i class="coin"></i><span id="coins">0</span></div>
+        <div class="rate" id="rate"></div></div>
+    </div>
+    <main id="stations" class="panel"></main>
     <div id="modal" class="modal hidden"></div>`;
+  const scene = createScene(root.querySelector<HTMLCanvasElement>('#scene')!, s);
 
   const coinsEl = root.querySelector<HTMLElement>('#coins')!;
   const rateEl = root.querySelector<HTMLElement>('#rate')!;
   const stationsEl = root.querySelector<HTMLElement>('#stations')!;
   const modal = root.querySelector<HTMLElement>('#modal')!;
-  const tapBtn = root.querySelector<HTMLButtonElement>('#tap')!;
-
-  tapBtn.addEventListener('pointerdown', e => { tap(s); floatText(tapBtn, `+${CONFIG.tapValue}`, e); });
 
   const rows: Row[] = CONFIG.stations.map(c => {
     const el = document.createElement('section');
@@ -48,6 +48,7 @@ export function mountUI(root: HTMLElement, s: GameState) {
   });
 
   function render() {
+    scene.draw(performance.now() / 1000);
     coinsEl.textContent = fmt(s.coins);
     let total = 0;
     for (const r of rows) {
@@ -87,15 +88,4 @@ export function mountUI(root: HTMLElement, s: GameState) {
   }
 
   return { render, showWelcome };
-}
-
-function floatText(host: HTMLElement, text: string, e: PointerEvent) {
-  const r = host.getBoundingClientRect();
-  const el = document.createElement('span');
-  el.className = 'float';
-  el.textContent = text;
-  el.style.left = `${e.clientX - r.left}px`;
-  el.style.top = `${e.clientY - r.top}px`;
-  host.appendChild(el);
-  setTimeout(() => el.remove(), 700);
 }
