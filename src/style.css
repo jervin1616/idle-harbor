@@ -88,7 +88,7 @@ button { font:inherit; }
 textarea { width:100%; font:inherit; font-size:13px; padding:6px; border:3px solid var(--ink); background:#fff8e8; resize:none; margin:4px 0; }
 
 /* side buttons (boost, daily chest), ad screen */
-.side { position:absolute; right:12px; top:calc(78px + env(safe-area-inset-top,0px)); display:flex; flex-direction:column; gap:12px; }
+.side { position:absolute; right:12px; top:calc(78px + env(safe-area-inset-top,0px)); display:flex; flex-direction:column; gap:20px; }
 .sidebtn { position:relative; width:46px; padding:4px 0 3px; border:0; background:var(--ink); color:#fff1c9; display:flex; flex-direction:column; align-items:center; gap:2px;
   box-shadow:0 0 0 3px #fff1c9, 0 0 0 6px var(--ink); font-size:11px; }
 .sidebtn small { font-size:11px; line-height:1; } .sidebtn .ico { width:22px; height:auto; }

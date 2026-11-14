@@ -133,7 +133,9 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
   let outImg = vis.createImageData(RW, RH);
   // The scene stretches to fill the phone screen: extra height becomes sky and open sea.
   function layout() {
-    const w = Math.min(window.innerWidth, 480), h = window.innerHeight;
+    // Size the scene to the box it really lives in (not the window), so it fills the screen with no gaps.
+    const box = canvas.parentElement?.getBoundingClientRect();
+    const w = Math.max(1, box?.width || Math.min(window.innerWidth, 480)), h = Math.max(1, box?.height || window.innerHeight);
     SHv = Math.max(BASE_SH, Math.min(860, Math.round((SW * h / w) / 2) * 2));
     const extra = SHv - BASE_SH;
     reserve = Math.min(112, Math.round(extra * 0.4));   // beach space kept free for the upgrade card
@@ -145,6 +147,7 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
   }
   layout();
   window.addEventListener('resize', layout);
+  if (canvas.parentElement && 'ResizeObserver' in window) new ResizeObserver(() => layout()).observe(canvas.parentElement);
   const pops: Pop[] = [];
   const splashes: Splash[] = [];
   let lastTap = -10;
