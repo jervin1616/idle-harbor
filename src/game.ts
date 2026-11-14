@@ -1,7 +1,6 @@
-import { CONFIG, FLEET_TIERS, StationId, stationById } from './config';
+import { CONFIG, DOCK_FISHER_LEVELS, FLEET_BOAT_GAP, FLEET_TIER_LEVELS, StationId, stationById } from './config';
 
-// Numbers are plain doubles (safe to ~1e308). Prestige in milestone 2 may need a
-// big-number library; all math is kept in this file so that swap stays easy.
+// Numbers are plain doubles (safe to ~1e308); with 100 levels and prestige that is far more than enough.
 
 export interface StationState {
   level: number;
@@ -11,63 +10,122 @@ export interface StationState {
 }
 
 export interface GameState {
-  version: 1;
+  version: 2;
   coins: number;
-  totalEarned: number;
+  totalEarned: number;     // lifetime, never reset
+  runEarned: number;       // this voyage (reset by Set Sail)
+  pearls: number;
+  prestiges: number;
+  taps: number;
+  fishCaught: number;
+  playSeconds: number;
+  achievements: string[];
+  settings: { sound: boolean };
   stations: Record<StationId, StationState>;
-  lastSaved: number;  // ms timestamp
+  lastSaved: number;       // ms timestamp
 }
 
+const blankStations = (): Record<StationId, StationState> => {
+  const b = (): StationState => ({ level: 0, hasManager: false, progress: 0, running: false });
+  return { dock: b(), shed: b(), market: b(), fleet: b() };
+};
+
 export function newState(now = Date.now()): GameState {
-  const blank = (): StationState => ({ level: 0, hasManager: false, progress: 0, running: false });
   return {
-    version: 1, coins: 0, totalEarned: 0, lastSaved: now,
-    stations: { dock: blank(), shed: blank(), market: blank(), fleet: blank() },
+    version: 2, coins: 0, totalEarned: 0, runEarned: 0, pearls: 0, prestiges: 0, taps: 0, fishCaught: 0,
+    playSeconds: 0, achievements: [], settings: { sound: true }, lastSaved: now, stations: blankStations(),
   };
 }
 
+// ---------- costs ----------
 export function upgradeCost(id: StationId, level: number): number {
   const c = stationById(id);
   return Math.floor(c.baseCost * Math.pow(c.costGrowth, level)); // level = current level
 }
 
+/** Total cost of buying n levels starting from `level` (geometric series). */
+export function costForLevels(id: StationId, level: number, n: number): number {
+  if (n <= 0) return 0;
+  const c = stationById(id), g = c.costGrowth;
+  return Math.floor(c.baseCost * Math.pow(g, level) * (Math.pow(g, n) - 1) / (g - 1));
+}
+
+/** Most levels the player can afford right now (capped at max level). */
+export function maxAffordable(s: GameState, id: StationId): number {
+  const level = s.stations[id].level, room = CONFIG.maxLevel - level;
+  if (room <= 0) return 0;
+  const c = stationById(id), g = c.costGrowth;
+  const first = c.baseCost * Math.pow(g, level);
+  let n = Math.floor(Math.log(1 + (s.coins * (g - 1)) / first) / Math.log(g));
+  n = Math.max(0, Math.min(room, n));
+  while (n > 0 && costForLevels(id, level, n) > s.coins) n--;
+  while (n < room && costForLevels(id, level, n + 1) <= s.coins) n++;
+  return n;
+}
+
+// ---------- income ----------
 export function incomeMultiplier(level: number): number {
   const hits = CONFIG.milestoneLevels.filter(l => level >= l).length;
   return Math.pow(CONFIG.milestoneMultiplier, hits);
 }
 
+export function nextMilestone(level: number): number | null {
+  return CONFIG.milestoneLevels.find(l => l > level) ?? null;
+}
+
+/** Base income of a station at a level, before Pearl/badge bonuses. */
 export function incomePerCycle(id: StationId, level: number): number {
   if (level <= 0) return 0;
   return stationById(id).baseIncome * level * incomeMultiplier(level);
 }
 
-export function incomePerSecond(id: StationId, st: StationState): number {
-  return incomePerCycle(id, st.level) / stationById(id).cycleSeconds;
+export const pearlMultiplier = (s: GameState) => 1 + s.pearls * CONFIG.pearlBonus;
+export const badgeMultiplier = (s: GameState) => 1 + s.achievements.length * CONFIG.achievementBonus;
+export const globalMultiplier = (s: GameState) => pearlMultiplier(s) * badgeMultiplier(s);
+
+/** What one cycle actually pays right now. */
+export function cycleIncome(s: GameState, id: StationId, level = s.stations[id].level): number {
+  return incomePerCycle(id, level) * globalMultiplier(s);
 }
 
+export function incomePerSecond(s: GameState, id: StationId): number {
+  const st = s.stations[id];
+  return cycleIncome(s, id) / stationById(id).cycleSeconds * (st.level > 0 ? 1 : 0);
+}
+
+// ---------- fleet / dock visuals ----------
+const tierAt = (level: number) => FLEET_TIER_LEVELS.filter(l => level >= l).length;
+/** Tier (1-7, 0 = no boat) of each of the three boats at a given fleet level. */
+export function fleetTiers(level: number): number[] {
+  return [0, 1, 2].map(i => tierAt(level - FLEET_BOAT_GAP * i));
+}
+/** Hired fishermen on the pier (besides you). */
+export const dockFishers = (level: number) => DOCK_FISHER_LEVELS.filter(l => level >= l).length;
+
+// ---------- actions ----------
 function earn(s: GameState, amount: number) {
-  s.coins += amount;
-  s.totalEarned += amount;
+  s.coins += amount; s.totalEarned += amount; s.runEarned += amount;
 }
 
-export function tap(s: GameState) { earn(s, CONFIG.tapValue); }
+export function tap(s: GameState) { s.taps++; s.fishCaught++; earn(s, CONFIG.tapValue); }
 
 export function startCycle(s: GameState, id: StationId): boolean {
   const st = s.stations[id];
   if (st.level < 1 || st.hasManager || st.running) return false;
-  st.running = true;
-  st.progress = 0;
+  st.running = true; st.progress = 0;
   return true;
 }
 
-export function buyUpgrade(s: GameState, id: StationId): boolean {
+/** Buy `count` levels (0 = as many as affordable). Returns how many were bought. */
+export function buyUpgrade(s: GameState, id: StationId, count = 1): number {
   const st = s.stations[id];
-  if (st.level >= CONFIG.maxLevel) return false;
-  const cost = upgradeCost(id, st.level);
-  if (s.coins < cost) return false;
-  s.coins -= cost;
-  st.level += 1;
-  return true;
+  const room = CONFIG.maxLevel - st.level;
+  let n = count === 0 ? maxAffordable(s, id) : Math.min(count, room);
+  if (n <= 0) return 0;
+  const cost = costForLevels(id, st.level, n);
+  if (s.coins < cost) return 0;
+  s.coins -= cost; st.level += n;
+  return n;
 }
 
 export function buyManager(s: GameState, id: StationId): boolean {
@@ -75,10 +133,16 @@ export function buyManager(s: GameState, id: StationId): boolean {
   if (st.level < 1 || st.hasManager) return false;
   const cost = stationById(id).managerCost;
   if (s.coins < cost) return false;
-  s.coins -= cost;
-  st.hasManager = true;
-  st.running = false;
+  s.coins -= cost; st.hasManager = true; st.running = false;
   return true;
+}
+
+// Fish caught per finished cycle: dock = 1 + fishermen, fleet = number of boats.
+function fishForCycle(s: GameState, id: StationId): number {
+  const lvl = s.stations[id].level;
+  if (id === 'dock') return 1 + dockFishers(lvl);
+  if (id === 'fleet') return fleetTiers(lvl).filter(v => v > 0).length;
+  return 0;
 }
 
 /** Advance the game by dt seconds. Returns coins earned. Works for any dt (also used offline). */
@@ -91,15 +155,16 @@ export function tick(s: GameState, dt: number): number {
       st.progress += dt;
       const cycles = Math.floor(st.progress / c.cycleSeconds);
       if (cycles > 0) {
-        earn(s, cycles * incomePerCycle(c.id, st.level));
+        earn(s, cycles * cycleIncome(s, c.id));
+        s.fishCaught += cycles * fishForCycle(s, c.id);
         st.progress -= cycles * c.cycleSeconds;
       }
     } else if (st.running) {
       st.progress += dt;
       if (st.progress >= c.cycleSeconds) {
-        earn(s, incomePerCycle(c.id, st.level));
-        st.running = false;
-        st.progress = 0;
+        earn(s, cycleIncome(s, c.id));
+        s.fishCaught += fishForCycle(s, c.id);
+        st.running = false; st.progress = 0;
       }
     }
   }
@@ -118,7 +183,16 @@ export function applyOffline(s: GameState, awaySeconds: number) {
   return { credited, away: awaySeconds, earned };
 }
 
-/** Tier (1-7, 0 = no boat) of each of the three boats at a given fleet level. */
-export function fleetTiers(level: number): number[] {
-  return [0, 1, 2].map(i => Math.max(0, Math.min(FLEET_TIERS.length, level - 3 * i)));
+// ---------- prestige ("Set Sail") ----------
+export function prestigeGain(s: GameState): number {
+  return Math.floor(Math.pow(Math.max(0, s.runEarned) / CONFIG.prestigeDivisor, CONFIG.prestigeExponent));
+}
+
+/** Reset the voyage for Pearls. Badges, stats and settings stay. Returns Pearls gained. */
+export function setSail(s: GameState): number {
+  const gain = prestigeGain(s);
+  if (gain < 1) return 0;
+  s.pearls += gain; s.prestiges++;
+  s.coins = 0; s.runEarned = 0; s.stations = blankStations();
+  return gain;
 }

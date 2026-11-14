@@ -1,5 +1,6 @@
 import { CONFIG, StationId, stationById } from './config';
-import { GameState, fleetTiers, incomePerCycle, startCycle, tap, upgradeCost } from './game';
+import { GameState, cycleIncome, dockFishers, fleetTiers, startCycle, tap, upgradeCost } from './game';
+import { sfx } from './audio';
 import { fmt } from './format';
 
 // Procedural cartoon harbor drawn on a canvas (no image files needed).
@@ -172,7 +173,7 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
       if (inRect(x, y, rx, ry, rw, rh)) { startCycle(s, id); onOpen(id); return; }
     }
     onOpen(null);
-    tap(s); startCycle(s, 'dock');
+    tap(s); startCycle(s, 'dock'); sfx.tap();
     lastTap = now;
     pops.push({ x, y, t0: now, text: `+${CONFIG.tapValue}` });
     splashes.push({ x, y: Math.min(Math.max(y, WATER_Y + 12 - (dy - dyTop)), SAND_Y - 8), t0: now });
@@ -192,7 +193,7 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
       const st = s.stations[cfg.id]; const pv = prev[cfg.id];
       const done = st.level >= 1 && ((st.hasManager && st.progress < pv.p) || (!st.hasManager && pv.run && !st.running));
       if (done) {
-        const amt = `+${fmt(incomePerCycle(cfg.id, st.level))}`;
+        const amt = `+${fmt(cycleIncome(s, cfg.id))}`; sfx.coin();
         if (cfg.id === 'dock') pops.push({ x: 150, y: 176, t0: t, text: amt });
         if (cfg.id === 'shed') pops.push({ x: SHED.x + SHED.w / 2, y: 262, t0: t, text: amt });
         if (cfg.id === 'fleet') pops.push({ x: BOAT_SPOTS[0][0], y: BOAT_SPOTS[0][1] + boatOff() - dy - 36, t0: t, text: amt });
@@ -338,7 +339,7 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
     hut(c);
     const level = s.stations.dock.level;
     const spots = [172, 138, 104, 70];
-    const hired = Math.min(3, Math.floor(level / 3));
+    const hired = dockFishers(level);
     const reel = Math.max(0, 1 - (performance.now() / 1000 - lastTap) / 0.35);
     for (let i = 0; i <= hired; i++) {
       const px = spots[i];

@@ -8,15 +8,16 @@ const ICONS: Record<string, string[]> = {
   basket: ['...kkkk...', '..k....k..', '.kkkkkkkk.', 'kssnssnssk', 'knsnsnsnnk', 'ksnssnssnk', '.knsnssnk.', '..kkkkkk..'],
   rod: ['........kk', '.......kn.', '......kn..', '.....kn..k', '....kn...k', '...kn....k', '..kn.....k', '.kn......k', 'kn.......r', 'k........r'],
   boat: ['......k.....', '......kk....', '......kwk...', '......kwwk..', 'kkkkkkkkkkk.', '.knnnnnnnnk.', '..kknnnnkk..', '....kkkk....'],
+  trophy: ['kkkkkkkkkk', 'kyyyyyyyyk', 'kyywyyyyyk', 'kykyyyykyk', '.kkyyyykk.', '...kyyk...', '....kk....', '...kyyk...', '..kkkkkk..'],
   hat: ['...kkkk...', '..kyyyyk..', '.kyywyyyk.', '.kyyyyyyk.', 'kkkkkkkkkk', 'kyyyyyyyyk', '.kkkkkkkk.'],
 };
 export const stationIcon: Record<string, string> = { dock: 'rod', shed: 'fish', market: 'basket', fleet: 'boat' };
 
-export function makeIcon(name: string, cls = 'ico'): HTMLCanvasElement {
+export function makeIcon(name: string, cls = 'ico', gray = false): HTMLCanvasElement {
   const rows = ICONS[name];
   const c = document.createElement('canvas');
   c.width = rows[0].length; c.height = rows.length; c.className = cls;
   const g = c.getContext('2d')!;
-  rows.forEach((row, y) => [...row].forEach((ch, x) => { if (COL[ch]) { g.fillStyle = COL[ch]; g.fillRect(x, y, 1, 1); } }));
+  rows.forEach((row, y) => [...row].forEach((ch, x) => { if (COL[ch]) { g.fillStyle = gray ? (ch === 'k' ? '#5d6a85' : '#8e9ab5') : COL[ch]; g.fillRect(x, y, 1, 1); } }));
   return c;
 }

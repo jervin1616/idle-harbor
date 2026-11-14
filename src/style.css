@@ -43,3 +43,46 @@ button { font:inherit; }
 .small { color:#6b3f23; font-size:14px; }
 .card button { margin-top:12px; padding:12px 32px; border:0; background:var(--green); color:#fff; font-size:18px;
   box-shadow:0 0 0 3px var(--ink), inset 0 -4px 0 var(--greenD), inset 0 3px 0 #9bd16b; text-shadow:2px 2px 0 var(--ink); }
+
+/* menu button, toast, buy-amount buttons */
+.menubtn { position:absolute; right:12px; top:calc(12px + env(safe-area-inset-top,0px)); width:46px; height:46px; border:0; background:var(--ink); color:#fff1c9;
+  display:flex; align-items:center; justify-content:center; box-shadow:0 0 0 3px #fff1c9, 0 0 0 6px var(--ink); }
+.menubtn .ico { width:26px; height:auto; }
+.menubtn:active { transform:translateY(2px); }
+.dot { position:absolute; right:-4px; top:-4px; width:14px; height:14px; background:#e8603c; box-shadow:0 0 0 3px var(--ink); }
+.toast { position:absolute; left:50%; top:calc(86px + env(safe-area-inset-top,0px)); transform:translateX(-50%); width:max-content; max-width:88%; text-align:center;
+  background:var(--cream); padding:8px 14px; font-size:15px; box-shadow:0 0 0 3px var(--ink), 0 5px 0 3px var(--ink); animation:pop .25s ease-out; z-index:5; }
+@keyframes pop { from { transform:translateX(-50%) translateY(-10px); opacity:0; } }
+.info.sub { font-size:13px; color:#8a4f7d; }
+.amts { display:flex; gap:6px; margin:8px 0 2px; }
+.amts button { flex:1; padding:5px 0; border:0; background:#c9b48a; color:var(--ink); font-size:14px; box-shadow:0 0 0 2px var(--ink); }
+.amts button.on { background:var(--orange); color:#fff; text-shadow:1px 1px 0 var(--ink); }
+
+/* menu */
+.menu { position:absolute; inset:0; background:#1b1424dd; display:flex; align-items:center; justify-content:center; z-index:10;
+  padding:calc(12px + env(safe-area-inset-top,0px)) 12px calc(12px + env(safe-area-inset-bottom,0px)); }
+.mcard { position:relative; background:var(--cream); width:100%; height:min(100%, 600px); display:flex; flex-direction:column; padding:12px 12px 10px;
+  box-shadow:0 0 0 4px var(--ink), 0 8px 0 4px var(--ink); }
+.mcard > .close { top:8px; right:8px; }
+.tabs { display:flex; gap:6px; margin:0 34px 10px 0; }
+.tabs button { flex:1; padding:7px 0; border:0; background:#c9b48a; color:var(--ink); font-size:14px; box-shadow:0 0 0 2px var(--ink); }
+.tabs button.on { background:var(--green); color:#fff; text-shadow:1px 1px 0 var(--ink); }
+.mbody { overflow-y:auto; min-height:0; flex:1; padding:2px 4px 4px 2px; }
+.pane h3 { margin:2px 0 6px; font-size:20px; } .pane p { margin:6px 0; font-size:15px; line-height:1.25; }
+.phead { margin-bottom:6px; font-size:16px; }
+.grp { margin:12px 0 4px; font-size:13px; letter-spacing:1px; text-transform:uppercase; color:#8a4f7d; }
+.badge { display:flex; gap:10px; align-items:center; padding:6px 4px; border-bottom:2px dashed #c9b48a; opacity:.72; }
+.badge.done { opacity:1; }
+.bicon .ico { width:24px; height:auto; }
+.bmeta { flex:1; min-width:0; } .bmeta b { font-size:15px; }
+.bw { height:7px; background:#dcc99b; margin-top:3px; box-shadow:0 0 0 2px var(--ink); } .bb { height:100%; background:var(--orange); }
+.badge.done .bb { background:var(--green); }
+.bt { font-size:13px; color:#6b3f23; white-space:nowrap; }
+.stats { margin:8px 0; } .srow { display:flex; justify-content:space-between; gap:12px; padding:5px 2px; border-bottom:2px dashed #c9b48a; font-size:15px; }
+.big-btn, .row-btn { display:block; width:100%; margin:8px 0; padding:11px 8px; border:0; background:var(--green); color:#fff; font-size:16px;
+  box-shadow:0 0 0 3px var(--ink), inset 0 -4px 0 var(--greenD), inset 0 3px 0 #9bd16b; text-shadow:2px 2px 0 var(--ink); }
+.row-btn { background:#8e9ab5; box-shadow:0 0 0 3px var(--ink), inset 0 -4px 0 #5d6a85, inset 0 3px 0 #c5cde0; }
+.row-btn.danger { background:#c4453a; box-shadow:0 0 0 3px var(--ink), inset 0 -4px 0 #7d2a2a, inset 0 3px 0 #e8603c; }
+.big-btn.armed { background:var(--orange); box-shadow:0 0 0 3px var(--ink), inset 0 -4px 0 var(--orangeD), inset 0 3px 0 #ffb86b; }
+.big-btn:disabled { background:#8e9ab5; box-shadow:0 0 0 3px var(--ink), inset 0 -4px 0 #5d6a85; color:#e6e9f2; }
+textarea { width:100%; font:inherit; font-size:13px; padding:6px; border:3px solid var(--ink); background:#fff8e8; resize:none; margin:4px 0; }
