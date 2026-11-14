@@ -1,10 +1,10 @@
-import { CONFIG, StationId } from './config';
-import { GameState, incomePerCycle, startCycle, tap } from './game';
+import { CONFIG, StationId, stationById } from './config';
+import { GameState, incomePerCycle, startCycle, tap, upgradeCost } from './game';
 import { fmt } from './format';
 
 // Procedural cartoon harbor drawn on a canvas (no image files needed).
 export const SW = 360;
-export const SH = 340;
+const BASE_SH = 340;
 const INK = '#2d1e3e';
 const WATER_Y = 112, SAND_Y = 226, BASE_Y = 314, DECK_Y = 196;
 const SHED = { x: 14, w: 112 };
@@ -98,13 +98,26 @@ function quantize(src: ImageData, dst: ImageData) {
   }
 }
 
-export function createScene(canvas: HTMLCanvasElement, s: GameState) {
-  const RW = SW / 2, RH = SH / 2;                     // internal pixel resolution
-  canvas.width = RW; canvas.height = RH;
+export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id: StationId | null) => void) {
   const vis = canvas.getContext('2d')!;
-  const off = document.createElement('canvas'); off.width = RW; off.height = RH;
+  const off = document.createElement('canvas');
   const ctx = off.getContext('2d', { willReadFrequently: true })!;
-  const outImg = vis.createImageData(RW, RH);
+  let SHv = BASE_SH, dy = 0, dyTop = 0, reserve = 0, RW = SW / 2, RH = SHv / 2;
+  let outImg = vis.createImageData(RW, RH);
+  // The scene stretches to fill the phone screen: extra height becomes sky and open sea.
+  function layout() {
+    const w = Math.min(window.innerWidth, 480), h = window.innerHeight;
+    SHv = Math.max(BASE_SH, Math.min(860, Math.round((SW * h / w) / 2) * 2));
+    const extra = SHv - BASE_SH;
+    reserve = Math.min(150, Math.round(extra * 0.45));   // beach space kept free for the upgrade card
+    dy = extra - reserve; dyTop = Math.round(dy * 0.3);
+    RW = SW / 2; RH = SHv / 2;
+    canvas.width = RW; canvas.height = RH; off.width = RW; off.height = RH;
+    canvas.style.aspectRatio = `${SW} / ${SHv}`;
+    outImg = vis.createImageData(RW, RH);
+  }
+  layout();
+  window.addEventListener('resize', layout);
   const pops: Pop[] = [];
   const splashes: Splash[] = [];
   let lastTap = -10;
@@ -119,14 +132,20 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState) {
 
   canvas.addEventListener('pointerdown', e => {
     const r = canvas.getBoundingClientRect();
-    const x = ((e.clientX - r.left) / r.width) * SW, y = ((e.clientY - r.top) / r.height) * SH;
+    const x = ((e.clientX - r.left) / r.width) * SW;
+    const y = ((e.clientY - r.top) / r.height) * SHv - dy;   // y in "harbor" coordinates
     const now = performance.now() / 1000;
-    if (inRect(x, y, SHED.x - 6, 226, SHED.w + 12, 100)) { if (s.stations.shed.level >= 1) startCycle(s, 'shed'); return; }
-    if (inRect(x, y, MARKET.x - 6, 226, MARKET.w + 12, 100)) { if (s.stations.market.level >= 1) startCycle(s, 'market'); return; }
+    const hit: [StationId, number, number, number, number][] = [
+      ['shed', SHED.x - 6, 226, SHED.w + 12, 100], ['market', MARKET.x - 6, 226, MARKET.w + 12, 100], ['dock', -6, 146, 56, 54],
+    ];
+    for (const [id, rx, ry, rw, rh] of hit) {
+      if (inRect(x, y, rx, ry, rw, rh)) { startCycle(s, id); onOpen(id); return; }
+    }
+    onOpen(null);
     tap(s); startCycle(s, 'dock');
     lastTap = now;
     pops.push({ x, y, t0: now, text: `+${CONFIG.tapValue}` });
-    splashes.push({ x, y: Math.min(Math.max(y, WATER_Y + 12), SAND_Y - 8), t0: now });
+    splashes.push({ x, y: Math.min(Math.max(y, WATER_Y + 12 - (dy - dyTop)), SAND_Y - 8), t0: now });
   });
 
   const phase = (id: StationId) => {
@@ -205,16 +224,16 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState) {
     c.fillStyle = g; c.fillRect(-20 + dx, y0, SW + 40, h);
   }
 
-  function sea(c: Ctx, t: number) {
-    const g = c.createLinearGradient(0, WATER_Y, 0, SAND_Y);
+  function sea(c: Ctx, t: number, ext: number) {
+    const g = c.createLinearGradient(0, WATER_Y, 0, SAND_Y + ext);
     g.addColorStop(0, '#c46b7c'); g.addColorStop(0.15, '#8a4f7d'); g.addColorStop(0.55, '#3a5a8c'); g.addColorStop(1, '#1d3557');
-    c.fillStyle = g; c.fillRect(0, WATER_Y, SW, SAND_Y - WATER_Y + 4);
-    for (let k = 0; k < 15; k++) {
-      const w = (28 - k * 1.5) * (0.65 + 0.35 * Math.sin(t * 2 + k * 1.3));
-      c.fillStyle = `rgba(255,240,170,${0.85 - k * 0.04})`;
+    c.fillStyle = g; c.fillRect(0, WATER_Y, SW, SAND_Y + ext - WATER_Y + 4);
+    for (let k = 0; k < 15 + Math.floor(ext / 8); k++) {
+      const w = Math.max(6, 28 - k * 1.5) * (0.65 + 0.35 * Math.sin(t * 2 + k * 1.3));
+      c.fillStyle = `rgba(255,240,170,${Math.max(0.12, 0.85 - k * 0.04)})`;
       c.fillRect(284 - w / 2 + Math.sin(t + k) * 2, WATER_Y + 4 + k * 8, w, 2.4);
     }
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 6 + Math.floor(ext / 19); i++) {
       const cy = WATER_Y + 12 + i * 19;
       c.beginPath();
       for (let x = 0; x <= SW; x += 6) {
@@ -268,8 +287,9 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState) {
     c.lineWidth = 1; c.strokeStyle = 'rgba(43,37,64,.35)';
     for (let x = 8; x < 196; x += 14) { c.beginPath(); c.moveTo(x, DECK_Y); c.lineTo(x, DECK_Y + 11); c.stroke(); }
 
+    hut(c);
     const level = s.stations.dock.level;
-    const spots = [172, 132, 92, 52];
+    const spots = [172, 138, 104, 70];
     const hired = Math.min(3, Math.floor(level / 3));
     const reel = Math.max(0, 1 - (performance.now() / 1000 - lastTap) / 0.35);
     for (let i = 0; i <= hired; i++) {
@@ -290,14 +310,14 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState) {
       if (u > 0 && u < 1) fish(c, bx + u * 8, by - 6 - Math.sin(u * Math.PI) * 26, -(u - 0.5) * 2.4, 0.85, '#ff9f43');
     }
     if (s.stations.dock.hasManager) {
-      person(c, 18, DECK_Y, 0.95, { shirt: '#3b82f6', hat: 'hard', hatColor: '#ffd23f', arm: 0.9 });
+      person(c, 22, DECK_Y, 0.95, { shirt: '#3b82f6', hat: 'hard', hatColor: '#ffd23f', arm: 0.9 });
     }
   }
 
   function land(c: Ctx, t: number) {
     c.beginPath(); c.moveTo(0, SAND_Y);
     for (let x = 0; x <= SW; x += 6) c.lineTo(x, SAND_Y + Math.sin(x * 0.07 + t * 1.5) * 2.2);
-    c.lineTo(SW, SH); c.lineTo(0, SH); c.closePath(); c.fillStyle = '#f5dfa6'; c.fill();
+    c.lineTo(SW, BASE_SH + reserve); c.lineTo(0, BASE_SH + reserve); c.closePath(); c.fillStyle = '#f5dfa6'; c.fill();
     c.beginPath();
     for (let x = 0; x <= SW; x += 6) {
       const y = SAND_Y + Math.sin(x * 0.07 + t * 1.5) * 2.2;
@@ -306,11 +326,34 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState) {
     c.lineWidth = 3; c.strokeStyle = 'rgba(255,255,255,.95)'; c.stroke();
     for (let i = 0; i < 9; i++) dot(c, (i * 47 + 11) % SW, 240 + ((i * 29) % 60), 1.4, 'rgba(160,120,60,.35)');
     // boardwalk
-    c.fillStyle = '#b9803f'; c.fillRect(0, BASE_Y, SW, SH - BASE_Y);
+    c.fillStyle = '#b9803f'; c.fillRect(0, BASE_Y, SW, BASE_SH + reserve - BASE_Y);
     c.lineWidth = 2; c.strokeStyle = INK; c.beginPath(); c.moveTo(0, BASE_Y); c.lineTo(SW, BASE_Y); c.stroke();
     c.lineWidth = 1; c.strokeStyle = 'rgba(43,37,64,.35)';
-    for (let x = 0; x < SW; x += 26) { c.beginPath(); c.moveTo(x, BASE_Y); c.lineTo(x, SH); c.stroke(); }
-    c.beginPath(); c.moveTo(0, BASE_Y + 13); c.lineTo(SW, BASE_Y + 13); c.stroke();
+    for (let x = 0; x < SW; x += 26) { c.beginPath(); c.moveTo(x, BASE_Y); c.lineTo(x, BASE_SH + reserve); c.stroke(); }
+    for (let yy = BASE_Y + 13; yy < BASE_SH + reserve; yy += 13) { c.beginPath(); c.moveTo(0, yy); c.lineTo(SW, yy); c.stroke(); }
+  }
+
+  function hut(c: Ctx) {
+    c.beginPath(); c.moveTo(-10, 168); c.lineTo(50, 168); c.lineTo(42, 150); c.lineTo(-2, 150); c.closePath(); paint(c, '#2f86b5', 2.2);
+    rr(c, -6, 168, 52, DECK_Y - 168, 2); paint(c, '#9a6236', 2.2);
+    rr(c, 4, 176, 14, DECK_Y - 176, 2); paint(c, '#3d2314', 1.8);
+    fish(c, 31, 180, 0, 0.8, '#4fb3d6');
+    c.beginPath(); c.arc(36, 190, 3.5, 0, TAU); paint(c, '#c4453a', 1.4);
+    if (s.stations.dock.level < 1) lockOverlay(c, -8, 150, 56, DECK_Y - 150);
+  }
+
+  // Bouncing marker over a building: green arrow = you can afford something, orange ! = hand-run station is idle.
+  function badge(c: Ctx, id: StationId, x: number, y: number, t: number) {
+    const st = s.stations[id]; const cfg = stationById(id);
+    const canUp = st.level < CONFIG.maxLevel && s.coins >= upgradeCost(id, st.level);
+    const canMgr = st.level >= 1 && !st.hasManager && s.coins >= cfg.managerCost;
+    const idle = st.level >= 1 && !st.hasManager && !st.running;
+    if (!canUp && !canMgr && !idle) return;
+    const by = y + Math.sin(t * 5) * 2.5;
+    rr(c, x - 9, by - 9, 18, 18, 3); paint(c, canUp || canMgr ? '#58a85a' : '#f28c4a', 2);
+    c.fillStyle = '#fff8e8';
+    if (canUp || canMgr) { c.beginPath(); c.moveTo(x, by - 5); c.lineTo(x + 5, by + 1); c.lineTo(x + 2, by + 1); c.lineTo(x + 2, by + 5); c.lineTo(x - 2, by + 5); c.lineTo(x - 2, by + 1); c.lineTo(x - 5, by + 1); c.closePath(); c.fill(); }
+    else { c.fillRect(x - 1.5, by - 5, 3, 6); c.fillRect(x - 1.5, by + 3, 3, 2.5); }
   }
 
   function bubble(c: Ctx, x: number, y: number, t: number) {
@@ -339,7 +382,7 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState) {
     if (active) fish(c, x + 14 + p * (w - 28), 289, 0, 0.8, '#ffd9a0');
     if (st.hasManager) person(c, x + w + 16, BASE_Y + 11, 0.95, { shirt: '#3b82f6', hat: 'hard', hatColor: '#ffd23f', arm: 0.9 });
     if (st.level < 1) lockOverlay(c, x - 6, 228, w + 12, BASE_Y - 228);
-    else if (!st.hasManager && !st.running) bubble(c, x + w / 2, 222 + Math.sin(t * 3) * 2, t);
+    badge(c, 'shed', x + w / 2, 218, t);
   }
 
   function market(c: Ctx, t: number, p: number) {
@@ -366,7 +409,7 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState) {
     }
     if (st.hasManager) person(c, x - 14, BASE_Y + 11, 0.95, { shirt: '#3b82f6', hat: 'hard', hatColor: '#ffd23f', arm: 0.9, flip: -1 });
     if (st.level < 1) lockOverlay(c, x - 10, 232, w + 20, BASE_Y - 232);
-    else if (!st.hasManager && !st.running) bubble(c, x + w / 2, 218 + Math.sin(t * 3 + 1) * 2, t);
+    badge(c, 'market', x + w / 2, 214, t);
   }
 
   function lockOverlay(c: Ctx, x: number, y: number, w: number, h: number) {
@@ -397,14 +440,20 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState) {
     fit(); detect(t);
     const c = ctx;
     const pd = phase('dock');
-    sky(c, t); sea(c, t);
+    c.fillStyle = '#5b3a6b'; c.fillRect(0, 0, SW, dyTop + 2);
+    c.save(); c.translate(0, dyTop); sky(c, t); sea(c, t, dy - dyTop); c.restore();
+    c.save(); c.translate(0, dyTop + (dy - dyTop) * 0.35);
     const boats = Math.min(3, Math.ceil(s.stations.dock.level / 4));
     const spots = [[262, 150, 1], [316, 180, 1.05], [226, 178, 0.95]];
     for (let i = 0; i < boats; i++) boat(c, spots[i][0], spots[i][1], spots[i][2], t, i, pd);
+    c.restore();
+    c.save(); c.translate(0, dy);
     pier(c, t, pd); land(c, t);
     shed(c, t, phase('shed')); market(c, t, phase('market'));
-    pines(c, t);
+    badge(c, 'dock', 20, 138, t);
     effects(c, t);
+    c.restore();
+    pines(c, t);
     quantize(c.getImageData(0, 0, RW, RH), outImg);
     vis.putImageData(outImg, 0, 0);
   }
