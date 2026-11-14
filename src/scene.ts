@@ -5,7 +5,7 @@ import { fmt } from './format';
 // Procedural cartoon harbor drawn on a canvas (no image files needed).
 export const SW = 360;
 export const SH = 340;
-const INK = '#2b2540';
+const INK = '#2d1e3e';
 const WATER_Y = 112, SAND_Y = 226, BASE_Y = 314, DECK_Y = 196;
 const SHED = { x: 14, w: 112 };
 const MARKET = { x: 236, w: 112 };
@@ -22,7 +22,7 @@ function dot(c: Ctx, x: number, y: number, r: number, col: string) {
   c.fillStyle = col; c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill();
 }
 function label(c: Ctx, text: string, x: number, y: number, size: number, fill: string) {
-  c.font = `700 ${size}px Fredoka, system-ui, sans-serif`;
+  c.font = `700 ${size}px 'Pixelify Sans', monospace`;
   c.textAlign = 'center'; c.lineWidth = 3.5; c.lineJoin = 'round';
   c.strokeStyle = INK; c.strokeText(text, x, y);
   c.fillStyle = fill; c.fillText(text, x, y);
@@ -68,8 +68,43 @@ function fish(c: Ctx, x: number, y: number, ang: number, k: number, col: string)
 interface Pop { x: number; y: number; t0: number; text: string }
 interface Splash { x: number; y: number; t0: number }
 
+const PAL_HEX = ['#1b1424','#2d1e3e','#4a2f4f','#3d2314','#6b3f23','#9a6236','#c78a45','#e8b86a','#f5dfa6','#fff1c9','#fff8e8',
+  '#7d2a2a','#c4453a','#e8603c','#f28c4a','#ffb86b','#ffd75e','#fff08a','#5b3a6b','#8a4f7d','#c46b7c','#e8898a','#f4a99a','#ffcfae',
+  '#1d3557','#3a5a8c','#25618f','#2f86b5','#4fb3d6','#8fd6e8','#c9eef2','#1f4d3a','#2f7a4a','#58a85a','#9bd16b','#5d6a85','#8e9ab5',
+  '#c5cde0','#ffffff','#ffd2a8','#e9a97e','#a2709a','#6b4f86','#b9803f'];
+const PAL = PAL_HEX.map(h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]);
+const LUT = new Int16Array(32768).fill(-1);
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+function nearest(r: number, g: number, b: number) {
+  let best = 0, bd = 1e9;
+  for (let i = 0; i < PAL.length; i++) {
+    const dr = PAL[i][0] - r, dg = PAL[i][1] - g, db = PAL[i][2] - b;
+    const d = dr * dr * 0.9 + dg * dg * 1.2 + db * db * 0.8;
+    if (d < bd) { bd = d; best = i; }
+  }
+  return best;
+}
+// Snap to the palette with ordered dithering: this is what makes it read as pixel art.
+function quantize(src: ImageData, dst: ImageData) {
+  const s = src.data, d = dst.data, w = src.width;
+  for (let i = 0, p = 0; i < s.length; i += 4, p++) {
+    const x = p % w, y = (p / w) | 0;
+    const off = (BAYER[(y & 3) * 4 + (x & 3)] - 7.5) * 1.3;
+    const r = Math.max(0, Math.min(255, s[i] + off)), g = Math.max(0, Math.min(255, s[i + 1] + off)), b = Math.max(0, Math.min(255, s[i + 2] + off));
+    const key = ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);
+    let idx = LUT[key];
+    if (idx < 0) { idx = nearest((r >> 3 << 3) + 4, (g >> 3 << 3) + 4, (b >> 3 << 3) + 4); LUT[key] = idx; }
+    d[i] = PAL[idx][0]; d[i + 1] = PAL[idx][1]; d[i + 2] = PAL[idx][2]; d[i + 3] = 255;
+  }
+}
+
 export function createScene(canvas: HTMLCanvasElement, s: GameState) {
-  const ctx = canvas.getContext('2d')!;
+  const RW = SW / 2, RH = SH / 2;                     // internal pixel resolution
+  canvas.width = RW; canvas.height = RH;
+  const vis = canvas.getContext('2d')!;
+  const off = document.createElement('canvas'); off.width = RW; off.height = RH;
+  const ctx = off.getContext('2d', { willReadFrequently: true })!;
+  const outImg = vis.createImageData(RW, RH);
   const pops: Pop[] = [];
   const splashes: Splash[] = [];
   let lastTap = -10;
@@ -77,13 +112,7 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState) {
     dock: { p: 0, run: false }, shed: { p: 0, run: false }, market: { p: 0, run: false },
   };
 
-  function fit() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 3);
-    const w = Math.max(1, canvas.clientWidth);
-    const cw = Math.round(w * dpr), ch = Math.round(w * (SH / SW) * dpr);
-    if (canvas.width !== cw || canvas.height !== ch) { canvas.width = cw; canvas.height = ch; }
-    ctx.setTransform(canvas.width / SW, 0, 0, canvas.width / SW, 0, 0);
-  }
+  function fit() { ctx.setTransform(0.5, 0, 0, 0.5, 0, 0); }
 
   const inRect = (x: number, y: number, rx: number, ry: number, w: number, h: number) =>
     x >= rx && x <= rx + w && y >= ry && y <= ry + h;
@@ -122,39 +151,69 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState) {
   }
 
   // ---------- drawing pieces ----------
+  function ridge(c: Ctx, base: number, amp: number, f: number, ph: number, col: string, trees: boolean) {
+    c.beginPath(); c.moveTo(0, WATER_Y + 1);
+    const ys: number[] = [];
+    for (let x = 0; x <= SW; x += 4) {
+      const y = base - (Math.sin(x * f + ph) * amp + Math.sin(x * f * 3.1 + ph * 2) * amp * 0.3 + amp);
+      ys.push(y); c.lineTo(x, y);
+    }
+    c.lineTo(SW, WATER_Y + 1); c.closePath(); c.fillStyle = col; c.fill();
+    if (trees) {
+      c.fillStyle = '#1f4d3a';
+      for (let i = 0; i < ys.length; i += 2) {
+        const x = i * 4, h = 6 + ((i * 7) % 5);
+        c.beginPath(); c.moveTo(x - 3, ys[i] + 2); c.lineTo(x, ys[i] - h); c.lineTo(x + 3, ys[i] + 2); c.closePath(); c.fill();
+      }
+    }
+  }
+
   function sky(c: Ctx, t: number) {
     const g = c.createLinearGradient(0, 0, 0, WATER_Y);
-    g.addColorStop(0, '#6ec6f5'); g.addColorStop(1, '#ffe8bf');
+    g.addColorStop(0, '#5b3a6b'); g.addColorStop(0.4, '#c46b7c'); g.addColorStop(0.78, '#f4a99a'); g.addColorStop(1, '#ffcfae');
     c.fillStyle = g; c.fillRect(0, 0, SW, WATER_Y + 1);
-    const sg = c.createRadialGradient(292, 52, 6, 292, 52, 52);
-    sg.addColorStop(0, 'rgba(255,240,170,.95)'); sg.addColorStop(1, 'rgba(255,240,170,0)');
-    c.fillStyle = sg; c.fillRect(220, 0, 140, 110);
-    dot(c, 292, 52, 18, '#ffd84a');
+    const sg = c.createRadialGradient(284, 94, 4, 284, 94, 78);
+    sg.addColorStop(0, 'rgba(255,240,170,.95)'); sg.addColorStop(0.35, 'rgba(255,184,107,.6)'); sg.addColorStop(1, 'rgba(255,184,107,0)');
+    c.fillStyle = sg; c.fillRect(190, 0, 170, 125);
+    dot(c, 284, 94, 17, '#fff08a');
     for (let i = 0; i < 3; i++) {
-      const x = ((t * (5 + i * 3) + i * 140) % (SW + 120)) - 60, y = 28 + i * 22;
-      c.fillStyle = 'rgba(255,255,255,.92)';
-      c.beginPath(); c.arc(x, y, 11, 0, TAU); c.arc(x + 13, y - 5, 14, 0, TAU); c.arc(x + 28, y, 10, 0, TAU); c.fill();
-      c.fillRect(x, y, 28, 10);
+      const x = ((t * (4 + i * 2) + i * 150) % (SW + 140)) - 70, y = 26 + i * 20;
+      c.fillStyle = '#e8898a';
+      c.beginPath(); c.arc(x, y, 10, 0, TAU); c.arc(x + 16, y - 6, 14, 0, TAU); c.arc(x + 34, y, 11, 0, TAU); c.fill(); c.fillRect(x, y, 34, 10);
+      c.fillStyle = '#ffcfae';
+      c.beginPath(); c.arc(x + 16, y - 9, 10, Math.PI, 0); c.fill();
     }
-    // lighthouse on a rock at the horizon
-    c.beginPath(); c.ellipse(70, WATER_Y, 22, 6, 0, Math.PI, TAU); paint(c, '#8a8f9c', 1.6);
-    c.beginPath(); c.moveTo(63, WATER_Y - 3); c.lineTo(77, WATER_Y - 3); c.lineTo(74, WATER_Y - 34); c.lineTo(66, WATER_Y - 34); c.closePath(); paint(c, '#fff4da', 1.6);
-    c.beginPath(); c.moveTo(65, WATER_Y - 16); c.lineTo(75, WATER_Y - 16); c.lineTo(74.5, WATER_Y - 23); c.lineTo(65.5, WATER_Y - 23); c.closePath(); paint(c, '#e8553d', 1.2);
-    rr(c, 65, WATER_Y - 42, 10, 8, 2); paint(c, '#ffd84a', 1.4);
-    c.beginPath(); c.moveTo(63, WATER_Y - 42); c.lineTo(70, WATER_Y - 50); c.lineTo(77, WATER_Y - 42); c.closePath(); paint(c, '#c4553b', 1.4);
-    // gulls
+    ridge(c, WATER_Y, 11, 0.021, 1.3, '#8a4f7d', false);
+    ridge(c, WATER_Y + 1, 7, 0.034, 4.1, '#5b3a6b', true);
+    c.beginPath(); c.ellipse(70, WATER_Y, 22, 6, 0, Math.PI, TAU); paint(c, '#5d6a85', 1.6);
+    c.beginPath(); c.moveTo(63, WATER_Y - 3); c.lineTo(77, WATER_Y - 3); c.lineTo(74, WATER_Y - 34); c.lineTo(66, WATER_Y - 34); c.closePath(); paint(c, '#fff1c9', 1.6);
+    c.beginPath(); c.moveTo(65, WATER_Y - 16); c.lineTo(75, WATER_Y - 16); c.lineTo(74.5, WATER_Y - 23); c.lineTo(65.5, WATER_Y - 23); c.closePath(); paint(c, '#c4453a', 1.2);
+    rr(c, 65, WATER_Y - 42, 10, 8, 2); paint(c, '#ffd75e', 1.4);
+    c.beginPath(); c.moveTo(63, WATER_Y - 42); c.lineTo(70, WATER_Y - 50); c.lineTo(77, WATER_Y - 42); c.closePath(); paint(c, '#7d2a2a', 1.4);
     for (let i = 0; i < 3; i++) {
       const x = ((t * (16 + i * 4) + i * 120) % (SW + 60)) - 30, y = 52 + i * 18 + Math.sin(t * 1.3 + i) * 6;
       const f = Math.sin(t * 7 + i) * 4;
       c.beginPath(); c.moveTo(x - 7, y + f); c.quadraticCurveTo(x - 3, y - 4, x, y); c.quadraticCurveTo(x + 3, y - 4, x + 7, y + f);
-      c.lineWidth = 2; c.strokeStyle = '#fff'; c.lineCap = 'round'; c.stroke();
+      c.lineWidth = 2; c.strokeStyle = '#fff1c9'; c.lineCap = 'round'; c.stroke();
     }
+  }
+
+  function mist(c: Ctx, t: number, y0: number, h: number, a: number, i: number) {
+    const dx = Math.sin(t * 0.25 + i * 2) * 16;
+    const g = c.createLinearGradient(0, y0, 0, y0 + h);
+    g.addColorStop(0, 'rgba(255,225,215,0)'); g.addColorStop(0.5, `rgba(255,225,215,${a})`); g.addColorStop(1, 'rgba(255,225,215,0)');
+    c.fillStyle = g; c.fillRect(-20 + dx, y0, SW + 40, h);
   }
 
   function sea(c: Ctx, t: number) {
     const g = c.createLinearGradient(0, WATER_Y, 0, SAND_Y);
-    g.addColorStop(0, '#4cc3e6'); g.addColorStop(1, '#1f86b8');
+    g.addColorStop(0, '#c46b7c'); g.addColorStop(0.15, '#8a4f7d'); g.addColorStop(0.55, '#3a5a8c'); g.addColorStop(1, '#1d3557');
     c.fillStyle = g; c.fillRect(0, WATER_Y, SW, SAND_Y - WATER_Y + 4);
+    for (let k = 0; k < 15; k++) {
+      const w = (28 - k * 1.5) * (0.65 + 0.35 * Math.sin(t * 2 + k * 1.3));
+      c.fillStyle = `rgba(255,240,170,${0.85 - k * 0.04})`;
+      c.fillRect(284 - w / 2 + Math.sin(t + k) * 2, WATER_Y + 4 + k * 8, w, 2.4);
+    }
     for (let i = 0; i < 6; i++) {
       const cy = WATER_Y + 12 + i * 19;
       c.beginPath();
@@ -162,13 +221,26 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState) {
         const y = cy + Math.sin(x * 0.045 + t * (0.9 + i * 0.12) + i * 2.1) * 2.4;
         x === 0 ? c.moveTo(x, y) : c.lineTo(x, y);
       }
-      c.lineWidth = 1.6; c.strokeStyle = `rgba(255,255,255,${0.16 + i * 0.03})`; c.stroke();
+      c.lineWidth = 1.6; c.strokeStyle = `rgba(255,207,174,${0.14 + i * 0.03})`; c.stroke();
     }
-    for (let i = 0; i < 7; i++) {
-      const x = (i * 53 + 17) % SW, y = WATER_Y + 14 + ((i * 37) % 90);
-      const a = 0.5 + 0.5 * Math.sin(t * 2.2 + i * 1.7);
-      dot(c, x, y, 1.4 * a + 0.4, `rgba(255,255,255,${0.35 + 0.5 * a})`);
-    }
+    mist(c, t, WATER_Y + 4, 34, 0.5, 0);
+    mist(c, t, WATER_Y + 40, 30, 0.28, 1);
+  }
+
+  function pines(c: Ctx, t: number) {
+    const branch = (x0: number, y0: number, dir: number, len: number, ph: number) => {
+      c.save(); c.translate(x0, y0); c.scale(dir, 1);
+      const sway = Math.sin(t * 0.6 + ph) * 1.6;
+      c.beginPath(); c.moveTo(0, 0); c.lineTo(len, 12 + sway); c.lineWidth = 4; c.strokeStyle = '#3d2314'; c.stroke();
+      for (let i = 1; i < 8; i++) {
+        const bx = i * len / 8, by = i * 12 / 8 + sway * (i / 8), h = 14 + (i % 3) * 5;
+        c.beginPath(); c.moveTo(bx - 9, by); c.lineTo(bx + 9, by); c.lineTo(bx + 1, by + h); c.closePath(); c.fillStyle = '#1f4d3a'; c.fill();
+        c.beginPath(); c.moveTo(bx - 4, by); c.lineTo(bx + 4, by); c.lineTo(bx, by + h * 0.55); c.closePath(); c.fillStyle = '#2f7a4a'; c.fill();
+      }
+      c.restore();
+    };
+    branch(SW + 6, -6, -1, 118, 0);
+    branch(-6, -10, 1, 44, 2);
   }
 
   function boat(c: Ctx, cx: number, cy: number, k: number, t: number, i: number, p: number) {
@@ -247,7 +319,7 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState) {
     rr(c, -20, -12, 40, 20, 8); paint(c, '#fff4da', 2);
     c.beginPath(); c.moveTo(-4, 8); c.lineTo(0, 14); c.lineTo(4, 8); c.closePath(); paint(c, '#fff4da', 2);
     c.fillStyle = '#fff4da'; c.fillRect(-3, 6, 6, 3);
-    c.font = '700 12px Fredoka, system-ui, sans-serif'; c.textAlign = 'center'; c.fillStyle = INK; c.fillText('TAP!', 0, 3);
+    c.font = "700 15px 'Pixelify Sans', monospace"; c.textAlign = 'center'; c.fillStyle = INK; c.fillText('TAP!', 0, 4);
     c.restore();
   }
 
@@ -257,7 +329,7 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState) {
     rr(c, x, 254, w, BASE_Y - 254, 3); paint(c, '#8ed1d6', 2.2);
     rr(c, x + 10, 272, w - 20, 26, 4); paint(c, '#2f4057', 2);
     rr(c, x + 22, 256, w - 44, 13, 3); paint(c, '#fff4da', 1.6);
-    c.font = '700 9px Fredoka, system-ui, sans-serif'; c.textAlign = 'center'; c.fillStyle = INK; c.fillText('CLEANING', x + w / 2, 266);
+    fish(c, x + w / 2, 262.5, 0, 0.75, '#4fb3d6');
     if (st.level >= 1) {
       person(c, x + w / 2, 298, 0.72, { shirt: '#fff4da', hat: 'cap', hatColor: '#fff4da', bob: active ? Math.sin(t * 10) * 0.8 : 0, arm: 0.6 + (active ? Math.sin(t * 10) * 0.7 : 0) });
     }
@@ -316,7 +388,7 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState) {
     for (let i = pops.length - 1; i >= 0; i--) {
       const a = t - pops[i].t0; if (a > 1.1) { pops.splice(i, 1); continue; }
       c.globalAlpha = Math.min(1, (1.1 - a) * 2);
-      label(c, pops[i].text, pops[i].x, pops[i].y - a * 30, 15, '#ffd84a');
+      label(c, pops[i].text, pops[i].x, pops[i].y - a * 30, 19, '#ffd75e');
       c.globalAlpha = 1;
     }
   }
@@ -331,7 +403,10 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState) {
     for (let i = 0; i < boats; i++) boat(c, spots[i][0], spots[i][1], spots[i][2], t, i, pd);
     pier(c, t, pd); land(c, t);
     shed(c, t, phase('shed')); market(c, t, phase('market'));
+    pines(c, t);
     effects(c, t);
+    quantize(c.getImageData(0, 0, RW, RH), outImg);
+    vis.putImageData(outImg, 0, 0);
   }
 
   return { draw };

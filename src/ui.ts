@@ -6,10 +6,11 @@ import {
 import { fmt, fmtDuration } from './format';
 import { save } from './save';
 import { createScene } from './scene';
+import { makeIcon, stationIcon } from './icons';
 
 interface Row {
   id: StationId; root: HTMLElement; bar: HTMLElement; title: HTMLElement; info: HTMLElement;
-  upBtn: HTMLButtonElement; mgrBtn: HTMLButtonElement;
+  upBtn: HTMLButtonElement; mgrBtn: HTMLButtonElement; upLabel: HTMLElement; mgLabel: HTMLElement;
 }
 
 export function mountUI(root: HTMLElement, s: GameState) {
@@ -32,14 +33,18 @@ export function mountUI(root: HTMLElement, s: GameState) {
     const el = document.createElement('section');
     el.className = 'station';
     el.innerHTML = `
-      <div class="top"><span class="emoji">${c.emoji}</span>
+      <div class="top"><span class="emoji"></span>
         <div class="meta"><b class="title"></b><div class="info"></div></div></div>
       <div class="barwrap"><div class="bar"></div></div>
       <div class="btns"><button class="up"></button><button class="mgr"></button></div>`;
+    el.querySelector('.emoji')!.appendChild(makeIcon(stationIcon[c.id], 'ico big'));
     stationsEl.appendChild(el);
+    const upLabel = document.createElement('span'), mgLabel = document.createElement('span');
+    el.querySelector('.up')!.appendChild(upLabel);
+    el.querySelector('.mgr')!.append(makeIcon('hat', 'ico small'), mgLabel);
     const row: Row = {
       id: c.id, root: el, bar: el.querySelector('.bar')!, title: el.querySelector('.title')!,
-      info: el.querySelector('.info')!, upBtn: el.querySelector('.up')!, mgrBtn: el.querySelector('.mgr')!,
+      info: el.querySelector('.info')!, upBtn: el.querySelector('.up')!, mgrBtn: el.querySelector('.mgr')!, upLabel, mgLabel,
     };
     el.querySelector('.top')!.addEventListener('click', () => startCycle(s, c.id));
     row.upBtn.addEventListener('click', () => { if (buyUpgrade(s, c.id)) save(s); });
@@ -67,9 +72,9 @@ export function mountUI(root: HTMLElement, s: GameState) {
       }
       const maxed = st.level >= CONFIG.maxLevel;
       const cost = maxed ? 0 : upgradeCost(r.id, st.level);
-      r.upBtn.textContent = maxed ? 'MAX' : `${st.level < 1 ? 'Build' : 'Upgrade'} · 🪙${fmt(cost)}`;
+      r.upLabel.innerHTML = maxed ? 'MAX' : `${st.level < 1 ? 'Build' : 'Upgrade'} <i class="coin sm"></i>${fmt(cost)}`;
       r.upBtn.disabled = maxed || s.coins < cost;
-      r.mgrBtn.textContent = st.hasManager ? '👷 Manager hired' : `👷 Hire · 🪙${fmt(c.managerCost)}`;
+      r.mgLabel.innerHTML = st.hasManager ? 'Hired' : `Hire <i class="coin sm"></i>${fmt(c.managerCost)}`;
       r.mgrBtn.disabled = st.hasManager || st.level < 1 || s.coins < c.managerCost;
       r.root.classList.toggle('locked', st.level < 1);
     }
@@ -80,7 +85,7 @@ export function mountUI(root: HTMLElement, s: GameState) {
     const capped = away > credited;
     modal.innerHTML = `<div class="card"><h2>Welcome back!</h2>
       <p>You were away ${fmtDuration(away)}.</p>
-      <p class="big">🪙 +${fmt(earned)}</p>
+      <p class="big"><i class="coin"></i> +${fmt(earned)}</p>
       ${capped ? `<p class="small">Your crew works up to ${fmtDuration(CONFIG.offlineCapSeconds)} while you're away.</p>` : ''}
       <button id="collect">Collect</button></div>`;
     modal.classList.remove('hidden');

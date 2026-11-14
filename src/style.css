@@ -1,35 +1,40 @@
-:root { --wood:#7a4b2a; --woodD:#4a2b13; --cream:#fff4da; --ink:#2b2540; --green:#52c15a; --greenD:#2f8f3a;
-  --orange:#ffa53a; --orangeD:#c9701a; --gold:#ffcf3f; }
+:root { --ink:#2d1e3e; --bg:#3d2314; --panel:#4a2f4f; --cream:#fff1c9; --sand:#e8b86a; --green:#58a85a; --greenD:#1f4d3a;
+  --orange:#f28c4a; --orangeD:#7d2a2a; --gold:#ffd75e; }
 * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-body { margin:0; background:var(--wood); color:var(--ink); user-select:none;
-  font-family:Fredoka, 'Trebuchet MS', system-ui, sans-serif; }
-#app { max-width:480px; margin:0 auto; background:var(--wood); min-height:100vh; }
+body { margin:0; background:var(--bg); color:var(--ink); user-select:none;
+  font-family:'Pixelify Sans', 'Courier New', monospace; font-weight:600; }
+#app { max-width:480px; margin:0 auto; background:var(--bg); min-height:100vh; }
 .stage { position:relative; }
-canvas { display:block; width:100%; aspect-ratio:360/340; touch-action:manipulation; }
+canvas { display:block; width:100%; aspect-ratio:360/340; touch-action:manipulation; image-rendering:pixelated; }
+canvas.ico { width:auto; aspect-ratio:auto; image-rendering:pixelated; }
+.ico.big { width:44px; height:auto; } .ico.small { width:20px; height:auto; }
 .hud { position:absolute; left:10px; top:10px; pointer-events:none; display:flex; flex-direction:column; align-items:flex-start; }
-.pill { display:flex; align-items:center; gap:8px; background:rgba(43,37,64,.88); border-radius:22px;
-  padding:4px 16px 4px 5px; color:#fff; font-size:22px; font-weight:700; border:2px solid rgba(255,255,255,.25); }
-.coin { width:28px; height:28px; border-radius:50%; background:radial-gradient(#ffe27a,#ffb400);
-  border:3px solid #b8780a; display:inline-block; }
-.rate { margin-top:5px; font-size:12px; color:#fff; text-shadow:0 1px 3px #000a; font-weight:600; }
-.panel { padding:10px 10px 30px; border-top:4px solid var(--woodD); }
-.station { background:var(--cream); border-radius:14px; padding:9px 10px; margin-bottom:9px; box-shadow:0 4px 0 var(--woodD); }
-.station.locked { background:#e4d6b8; }
-.top { display:flex; gap:10px; align-items:center; cursor:pointer; }
-.emoji { font-size:28px; } .title { font-size:16px; } .info { color:#7a6a4f; font-size:13px; }
-.barwrap { height:9px; background:#dcc99b; border-radius:6px; margin:8px 0; overflow:hidden; border:1.5px solid #b79d62; }
-.bar { height:100%; width:0; background:var(--gold); }
-.btns { display:flex; gap:8px; }
+.pill { display:flex; align-items:center; gap:8px; background:var(--ink); padding:5px 14px 5px 6px; color:#fff1c9; font-size:24px;
+  box-shadow:0 0 0 3px #fff1c9, 0 0 0 6px var(--ink); margin:3px; }
+.coin { width:24px; height:24px; background:var(--gold); display:inline-block; flex:none;
+  clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%);
+  box-shadow:inset -4px -4px 0 #c78a45, inset 3px 3px 0 #fff08a; }
+.coin.sm { width:13px; height:13px; margin:0 2px 0 4px; vertical-align:-2px; }
+.rate { margin-top:10px; font-size:14px; color:#fff1c9; text-shadow:2px 2px 0 var(--ink); }
+.panel { padding:12px 10px 30px; border-top:4px solid var(--ink); background:var(--panel); }
+.station { background:var(--cream); padding:9px 10px; margin-bottom:12px; box-shadow:0 0 0 3px var(--ink), 0 6px 0 3px var(--ink); }
+.station.locked { background:#c9b48a; }
+.top { display:flex; gap:12px; align-items:center; cursor:pointer; }
+.title { font-size:18px; } .info { color:#6b3f23; font-size:14px; }
+.barwrap { height:12px; background:#c9b48a; margin:8px 0; border:3px solid var(--ink); }
+.bar { height:100%; width:0; background:var(--orange); }
+.btns { display:flex; gap:10px; }
 button { font:inherit; }
-.btns button { flex:1; padding:9px 4px; border:0; border-radius:11px; background:var(--green); color:#fff;
-  font-weight:700; font-size:14px; box-shadow:0 4px 0 var(--greenD); text-shadow:0 1px 0 #0003; }
-.btns .mgr { background:var(--orange); box-shadow:0 4px 0 var(--orangeD); }
-.btns button:active:not(:disabled) { transform:translateY(3px); box-shadow:0 1px 0 #0003; }
-.btns button:disabled { background:#bdb5a3; box-shadow:0 4px 0 #8d867a; color:#f3efe6; }
-.modal { position:fixed; inset:0; background:#000a; display:flex; align-items:center; justify-content:center; }
+.btns button { flex:1; padding:9px 4px; border:0; background:var(--green); color:#fff; font-size:15px; display:flex; gap:5px; align-items:center; justify-content:center;
+  box-shadow:0 0 0 3px var(--ink), inset 0 -4px 0 var(--greenD), inset 0 3px 0 #9bd16b; text-shadow:2px 2px 0 var(--ink); }
+.btns .mgr { background:var(--orange); box-shadow:0 0 0 3px var(--ink), inset 0 -4px 0 var(--orangeD), inset 0 3px 0 #ffb86b; }
+.btns button:active:not(:disabled) { transform:translateY(3px); }
+.btns button:disabled { background:#8e9ab5; box-shadow:0 0 0 3px var(--ink), inset 0 -4px 0 #5d6a85, inset 0 3px 0 #c5cde0; color:#e6e9f2; }
+.modal { position:fixed; inset:0; background:#1b1424cc; display:flex; align-items:center; justify-content:center; }
 .modal.hidden { display:none; }
-.card { background:var(--cream); padding:24px; border-radius:18px; text-align:center; width:min(86vw,340px); box-shadow:0 6px 0 var(--woodD); }
+.card { background:var(--cream); padding:24px; text-align:center; width:min(86vw,340px); box-shadow:0 0 0 4px var(--ink), 0 8px 0 4px var(--ink); }
 .card h2 { margin:0 0 6px; } .card p { margin:4px 0; }
-.card .big { font-size:34px; font-weight:700; color:#c9871a; margin:8px 0; } .small { color:#7a6a4f; font-size:13px; }
-.card button { margin-top:10px; padding:12px 32px; border:0; border-radius:12px; background:var(--green); color:#fff;
-  font-weight:700; font-size:16px; box-shadow:0 4px 0 var(--greenD); }
+.card .big { font-size:36px; color:#9a6236; margin:10px 0; display:flex; gap:8px; justify-content:center; align-items:center; }
+.small { color:#6b3f23; font-size:14px; }
+.card button { margin-top:12px; padding:12px 32px; border:0; background:var(--green); color:#fff; font-size:18px;
+  box-shadow:0 0 0 3px var(--ink), inset 0 -4px 0 var(--greenD), inset 0 3px 0 #9bd16b; text-shadow:2px 2px 0 var(--ink); }
