@@ -49,5 +49,11 @@ export const FLEET_BOAT_GAP = 20;
 // Dock levels at which another fisherman joins you on the pier.
 export const DOCK_FISHER_LEVELS = [15, 40, 70];
 
+// AdMob. These are Google's official TEST ids, safe to tap. Before launch: set testing to false and use your own ids.
+export const ADMOB = {
+  testing: true,
+  rewardedUnitId: 'ca-app-pub-3940256099942544/5224354917',
+};
+
 export const stationById = (id: StationId): StationConfig =>
   CONFIG.stations.find(s => s.id === id)!;
