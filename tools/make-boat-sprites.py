@@ -28,3 +28,6 @@ for r, c, im in cells(src + '/Boat.png', 3, 3):
 for r, c, im in cells(src + '/Ship.png', 3, 1):
     if c == 2:
         shrink(im, 0.20).save(f'{out}ship.png')
+for r, c, im in cells(src + '/Raft.png', 3, 2):
+    if r == 1 and c == 0:  # raft with barrel and net
+        shrink(im, 0.30).save(f'{out}raft.png')

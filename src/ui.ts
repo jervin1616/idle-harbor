@@ -18,7 +18,6 @@ export function mountUI(root: HTMLElement, s: GameState) {
         <button class="close" id="close" aria-label="Close">✕</button>
         <div class="top"><span class="emoji" id="sicon"></span>
           <div class="meta"><b class="title" id="stitle"></b><div class="info" id="sinfo"></div></div></div>
-        <div class="barwrap"><div class="bar" id="sbar"></div></div>
         <div class="btns"><button class="up" id="sup"><span></span></button><button class="mgr" id="smgr"></button></div>
       </section>
     </div>
@@ -26,7 +25,7 @@ export function mountUI(root: HTMLElement, s: GameState) {
 
   let openId: StationId | null = null;
   const $ = <T extends HTMLElement>(id: string) => root.querySelector<T>('#' + id)!;
-  const sheet = $('sheet'), sicon = $('sicon'), stitle = $('stitle'), sinfo = $('sinfo'), sbar = $('sbar');
+  const sheet = $('sheet'), sicon = $('sicon'), stitle = $('stitle'), sinfo = $('sinfo');
   const sup = $<HTMLButtonElement>('sup'), smgr = $<HTMLButtonElement>('smgr');
   const upLabel = sup.querySelector('span')!;
   const mgIcon = makeIcon('hat', 'ico small'), mgLabel = document.createElement('span');
@@ -64,8 +63,6 @@ export function mountUI(root: HTMLElement, s: GameState) {
       const now = incomePerCycle(openId, st.level), next = maxed ? now : incomePerCycle(openId, st.level + 1);
       sinfo.textContent = `${fmt(now)} per ${c.cycleSeconds}s${maxed ? '' : ` → ${fmt(next)}`}${st.hasManager ? '' : ' · hand-run'}`;
     }
-    const active = st.hasManager || st.running;
-    sbar.style.width = st.level >= 1 && active ? `${Math.min(100, (st.progress / c.cycleSeconds) * 100)}%` : '0%';
     const cost = maxed ? 0 : upgradeCost(openId, st.level);
     upLabel.innerHTML = maxed ? 'MAX' : `${st.level < 1 ? 'Build' : 'Upgrade'} <i class="coin sm"></i>${fmt(cost)}`;
     sup.disabled = maxed || s.coins < cost;

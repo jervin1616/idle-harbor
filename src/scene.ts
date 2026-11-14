@@ -8,9 +8,11 @@ import boat0 from './assets/boats/boat0.png';
 import boat1 from './assets/boats/boat1.png';
 import boat2 from './assets/boats/boat2.png';
 import shipUrl from './assets/boats/ship.png';
+import raftUrl from './assets/boats/raft.png';
 const loadImg = (u: string) => { const i = new Image(); i.src = u; return i; };
 const sprites = [boat0, boat1, boat2].map(loadImg);
 const shipImg = loadImg(shipUrl);
+const raftImg = loadImg(raftUrl);
 const BASE_SH = 340;
 const INK = '#2d1e3e';
 const WATER_Y = 112, SAND_Y = 226, BASE_Y = 314, DECK_Y = 196;
@@ -28,6 +30,16 @@ function paint(c: Ctx, fill: string, lw = 2) {
 function dot(c: Ctx, x: number, y: number, r: number, col: string) {
   c.fillStyle = col; c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill();
 }
+// Textured wood: base colour, light top edge, dark plank seams, shaded bottom.
+function wood(c: Ctx, x: number, y: number, w: number, h: number, base: string, light: string, dark: string, vertical = false, gap = 6) {
+  rr(c, x, y, w, h, 2); paint(c, base, 2);
+  c.fillStyle = light; c.fillRect(x + 1, y + 1, w - 2, 1.6);
+  c.fillStyle = dark; c.fillRect(x + 1, y + h - 2.4, w - 2, 1.4);
+  c.lineWidth = 1; c.strokeStyle = dark;
+  if (vertical) for (let xx = x + gap; xx < x + w - 1; xx += gap) { c.beginPath(); c.moveTo(xx, y + 2); c.lineTo(xx, y + h - 2); c.stroke(); }
+  else for (let yy = y + gap; yy < y + h - 1; yy += gap) { c.beginPath(); c.moveTo(x + 2, yy); c.lineTo(x + w - 2, yy); c.stroke(); }
+}
+
 function label(c: Ctx, text: string, x: number, y: number, size: number, fill: string) {
   c.font = `700 ${size}px 'Pixelify Sans', monospace`;
   c.textAlign = 'center'; c.lineWidth = 3.5; c.lineJoin = 'round';
@@ -116,7 +128,7 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
     const w = Math.min(window.innerWidth, 480), h = window.innerHeight;
     SHv = Math.max(BASE_SH, Math.min(860, Math.round((SW * h / w) / 2) * 2));
     const extra = SHv - BASE_SH;
-    reserve = Math.min(150, Math.round(extra * 0.45));   // beach space kept free for the upgrade card
+    reserve = Math.min(112, Math.round(extra * 0.4));   // beach space kept free for the upgrade card
     dy = extra - reserve; dyTop = Math.round(dy * 0.3);
     RW = SW / 2; RH = SHv / 2;
     canvas.width = RW; canvas.height = RH; off.width = RW; off.height = RH;
@@ -294,12 +306,20 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
 
   function pier(c: Ctx, t: number, p: number) {
     for (const x of [8, 58, 108, 158, 184]) {
-      rr(c, x, DECK_Y + 8, 7, 28, 1.5); paint(c, '#7a4b2a', 1.6);
-      c.beginPath(); c.ellipse(x + 3.5, DECK_Y + 36, 8, 2.4, 0, 0, TAU); c.fillStyle = 'rgba(255,255,255,.6)'; c.fill();
+      wood(c, x, DECK_Y + 8, 8, 30, '#8a5530', '#b9803f', '#4a2b13', false, 5);
+      c.beginPath(); c.ellipse(x + 4, DECK_Y + 37, 9, 2.4, 0, 0, TAU); c.fillStyle = 'rgba(255,241,201,.65)'; c.fill();
     }
-    rr(c, -6, DECK_Y, 202, 11, 2); paint(c, '#c78a45', 2);
-    c.lineWidth = 1; c.strokeStyle = 'rgba(43,37,64,.35)';
-    for (let x = 8; x < 196; x += 14) { c.beginPath(); c.moveTo(x, DECK_Y); c.lineTo(x, DECK_Y + 11); c.stroke(); }
+    c.beginPath(); c.moveTo(12, DECK_Y + 16); c.quadraticCurveTo(35, DECK_Y + 24, 62, DECK_Y + 16); c.quadraticCurveTo(85, DECK_Y + 24, 112, DECK_Y + 16);
+    c.lineWidth = 1.6; c.strokeStyle = '#e8b86a'; c.stroke();
+    wood(c, -6, DECK_Y, 202, 12, '#c78a45', '#e8b86a', '#7a4b2a', true, 14);
+    c.fillStyle = 'rgba(45,30,62,.45)'; c.fillRect(-4, DECK_Y + 12, 198, 3);
+    // dusk lantern on the pier's end
+    rr(c, 189, DECK_Y - 30, 3, 30, 1); paint(c, '#4a2b13', 1.4);
+    const fl = 0.75 + Math.sin(t * 7) * 0.12;
+    const lg = c.createRadialGradient(190.5, DECK_Y - 32, 1, 190.5, DECK_Y - 32, 20);
+    lg.addColorStop(0, `rgba(255,225,140,${0.38 * fl})`); lg.addColorStop(1, 'rgba(255,225,140,0)');
+    c.fillStyle = lg; c.fillRect(170, DECK_Y - 52, 42, 42);
+    rr(c, 185, DECK_Y - 38, 11, 9, 2); paint(c, '#ffd75e', 1.6);
 
     hut(c);
     const level = s.stations.dock.level;
@@ -382,15 +402,21 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
 
   function shed(c: Ctx, t: number, p: number) {
     const { x, w } = SHED; const st = s.stations.shed; const active = p >= 0;
-    c.beginPath(); c.moveTo(x - 6, 254); c.lineTo(x + w + 6, 254); c.lineTo(x + w - 8, 230); c.lineTo(x + 8, 230); c.closePath(); paint(c, '#c4553b', 2.2);
-    rr(c, x, 254, w, BASE_Y - 254, 3); paint(c, '#8ed1d6', 2.2);
-    rr(c, x + 10, 272, w - 20, 26, 4); paint(c, '#2f4057', 2);
+    c.beginPath(); c.moveTo(x - 6, 254); c.lineTo(x + w + 6, 254); c.lineTo(x + w - 8, 230); c.lineTo(x + 8, 230); c.closePath(); paint(c, '#c4453a', 2.2);
+    c.save(); c.beginPath(); c.moveTo(x - 6, 254); c.lineTo(x + w + 6, 254); c.lineTo(x + w - 8, 230); c.lineTo(x + 8, 230); c.closePath(); c.clip();
+    c.lineWidth = 1; c.strokeStyle = '#7d2a2a';
+    for (let yy = 236; yy < 254; yy += 6) { c.beginPath(); c.moveTo(x - 6, yy); c.lineTo(x + w + 6, yy); c.stroke(); for (let xx = x - 6 + ((yy / 6) % 2) * 5; xx < x + w + 6; xx += 10) { c.beginPath(); c.moveTo(xx, yy); c.lineTo(xx, yy + 6); c.stroke(); } }
+    c.fillStyle = '#e8603c'; c.fillRect(x - 6, 231, w + 12, 1.6);
+    c.restore();
+    wood(c, x, 254, w, BASE_Y - 254, '#8ed1d6', '#c9eef2', '#4fb3d6', false, 7);
+    rr(c, x + 10, 272, w - 20, 26, 4); paint(c, st.level >= 1 ? '#6b3f23' : '#2f4057', 2);
+    if (st.level >= 1) { const lg = c.createRadialGradient(x + w / 2, 276, 2, x + w / 2, 276, 30); lg.addColorStop(0, 'rgba(255,215,94,.55)'); lg.addColorStop(1, 'rgba(255,215,94,0)'); c.fillStyle = lg; c.fillRect(x + 10, 272, w - 20, 26); }
     rr(c, x + 22, 256, w - 44, 13, 3); paint(c, '#fff4da', 1.6);
     fish(c, x + w / 2, 262.5, 0, 0.75, '#4fb3d6');
     if (st.level >= 1) {
       person(c, x + w / 2, 298, 0.72, { shirt: '#fff4da', hat: 'cap', hatColor: '#fff4da', bob: active ? Math.sin(t * 10) * 0.8 : 0, arm: 0.6 + (active ? Math.sin(t * 10) * 0.7 : 0) });
     }
-    rr(c, x + 6, 296, w - 12, 12, 3); paint(c, '#c78a45', 2);
+    wood(c, x + 6, 296, w - 12, 12, '#c78a45', '#e8b86a', '#7a4b2a', false, 5);
     const n = Math.min(st.level, 6);
     for (let i = 0; i < n; i++) fish(c, x + 14 + i * 12, 293, 0, 0.55, i % 2 ? '#7fc8f8' : '#ff9f43');
     if (active) fish(c, x + 14 + p * (w - 28), 289, 0, 0.8, '#ffd9a0');
@@ -401,12 +427,12 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
 
   function market(c: Ctx, t: number, p: number) {
     const { x, w } = MARKET; const st = s.stations.market; const active = p >= 0;
-    rr(c, x + 2, 246, 6, BASE_Y - 246, 1.5); paint(c, '#7a4b2a', 1.6);
-    rr(c, x + w - 8, 246, 6, BASE_Y - 246, 1.5); paint(c, '#7a4b2a', 1.6);
+    wood(c, x + 2, 246, 6, BASE_Y - 246, '#8a5530', '#b9803f', '#4a2b13', false, 6);
+    wood(c, x + w - 8, 246, 6, BASE_Y - 246, '#8a5530', '#b9803f', '#4a2b13', false, 6);
     if (st.level >= 1) {
       person(c, x + w / 2, 290, 0.82, { shirt: '#6bc46d', hat: 'cap', hatColor: '#e8553d', bob: active ? Math.sin(t * 8) * 0.8 : 0, arm: 0.5 + (active ? Math.sin(t * 8) * 0.5 : 0) });
     }
-    rr(c, x + 4, 288, w - 8, BASE_Y - 288, 3); paint(c, '#c98a4b', 2);
+    wood(c, x + 4, 288, w - 8, BASE_Y - 288, '#c98a4b', '#e8b86a', '#7a4b2a', true, 9);
     rr(c, x + 10, 280, 26, 10, 3); paint(c, '#a86b32', 1.6);
     const n = Math.min(st.level, 4);
     for (let i = 0; i < n; i++) fish(c, x + 17 + i * 5, 279, 0.3 * (i - 1.5), 0.5, '#ff9f43');
@@ -426,8 +452,46 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
     badge(c, 'market', x + w / 2, 214, t);
   }
 
+  function raft(c: Ctx, t: number) {
+    if (!(raftImg.complete && raftImg.naturalWidth)) return;
+    const by = 212 + Math.round(Math.sin(t * 1.3 + 1) * 1.1) * 2;
+    c.beginPath(); c.ellipse(262, by + 3, 28, 3, 0, 0, TAU); c.fillStyle = 'rgba(255,225,215,.5)'; c.fill();
+    c.imageSmoothingEnabled = false;
+    c.drawImage(raftImg, Math.round(262 - raftImg.naturalWidth), by - raftImg.naturalHeight * 2 + 4, raftImg.naturalWidth * 2, raftImg.naturalHeight * 2);
+  }
+
+  function barrel(c: Ctx, x: number, y: number) {
+    rr(c, x - 8, y - 20, 16, 20, 4); paint(c, '#9a6236', 2);
+    c.fillStyle = '#c78a45'; c.fillRect(x - 6, y - 18, 3, 16);
+    c.fillStyle = '#4a2b13'; c.fillRect(x - 8, y - 14, 16, 2); c.fillRect(x - 8, y - 6, 16, 2);
+  }
+  function crate(c: Ctx, x: number, y: number, s2 = 1) {
+    wood(c, x - 9 * s2, y - 17 * s2, 18 * s2, 17 * s2, '#c78a45', '#e8b86a', '#7a4b2a', false, 6 * s2);
+    c.lineWidth = 1.2; c.strokeStyle = '#4a2b13'; c.beginPath(); c.moveTo(x - 7 * s2, y - 15 * s2); c.lineTo(x + 7 * s2, y - 2 * s2); c.moveTo(x + 7 * s2, y - 15 * s2); c.lineTo(x - 7 * s2, y - 2 * s2); c.stroke();
+  }
+  function cat(c: Ctx, x: number, y: number, t: number) {
+    const tail = Math.sin(t * 2.2) * 5, blink = Math.sin(t * 0.9) > 0.96;
+    c.beginPath(); c.moveTo(x - 7, y - 3); c.quadraticCurveTo(x - 17, y - 6 + tail, x - 13, y - 17 + tail); c.lineWidth = 4; c.strokeStyle = INK; c.lineCap = 'round'; c.stroke();
+    c.lineWidth = 2; c.strokeStyle = '#f28c4a'; c.stroke();
+    c.beginPath(); c.ellipse(x, y - 7, 9, 7, 0, 0, TAU); paint(c, '#f28c4a', 2);
+    c.beginPath(); c.arc(x + 6, y - 15, 6, 0, TAU); paint(c, '#f28c4a', 2);
+    c.beginPath(); c.moveTo(x + 1.5, y - 19); c.lineTo(x + 2.5, y - 25); c.lineTo(x + 6, y - 20); c.closePath(); paint(c, '#f28c4a', 1.4);
+    c.beginPath(); c.moveTo(x + 7, y - 20); c.lineTo(x + 10.5, y - 25); c.lineTo(x + 11.5, y - 18.5); c.closePath(); paint(c, '#f28c4a', 1.4);
+    if (blink) { c.fillStyle = INK; c.fillRect(x + 3, y - 15, 3, 1); c.fillRect(x + 8, y - 15, 3, 1); }
+    else { dot(c, x + 4.5, y - 15, 1.2, INK); dot(c, x + 9, y - 15, 1.2, INK); }
+    c.fillStyle = '#ffd2a8'; c.fillRect(x + 6.5, y - 12.5, 2, 1.5);
+  }
+  function props(c: Ctx, t: number) {
+    const y = BASE_Y + 30;
+    barrel(c, 168, y); barrel(c, 186, y + 3);
+    crate(c, 306, y + 2); crate(c, 324, y + 2); crate(c, 315, y - 15);
+    cat(c, 222, y + 6, t);
+    c.beginPath(); c.ellipse(120, y + 2, 11, 5, 0, 0, TAU); paint(c, '#e8b86a', 1.8);
+    c.beginPath(); c.ellipse(120, y, 6, 2.5, 0, 0, TAU); c.lineWidth = 1.4; c.strokeStyle = '#7a4b2a'; c.stroke();
+  }
+
   function lockOverlay(c: Ctx, x: number, y: number, w: number, h: number) {
-    rr(c, x, y, w, h, 6); c.fillStyle = 'rgba(30,40,70,.58)'; c.fill();
+    rr(c, x, y, w, h, 6); c.fillStyle = 'rgba(255,241,201,.62)'; c.fill(); c.lineWidth = 1.5; c.setLineDash([4, 3]); c.strokeStyle = '#8a4f7d'; c.stroke(); c.setLineDash([]);
     const cx = x + w / 2, cy = y + h / 2;
     c.beginPath(); c.arc(cx, cy - 7, 8, Math.PI, 0); c.lineWidth = 3.5; c.strokeStyle = INK; c.stroke();
     c.lineWidth = 1.6; c.strokeStyle = '#ffd23f'; c.stroke();
@@ -463,7 +527,7 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
     for (let i = 0; i < boats; i++) boat(c, spots[i][0], spots[i][1], spots[i][2], t, i, pd);
     c.restore();
     c.save(); c.translate(0, dy);
-    pier(c, t, pd); land(c, t);
+    raft(c, t); pier(c, t, pd); land(c, t); props(c, t);
     shed(c, t, phase('shed')); market(c, t, phase('market'));
     badge(c, 'dock', 20, 138, t);
     effects(c, t);
