@@ -4,6 +4,13 @@ import { fmt } from './format';
 
 // Procedural cartoon harbor drawn on a canvas (no image files needed).
 export const SW = 360;
+import boat0 from './assets/boats/boat0.png';
+import boat1 from './assets/boats/boat1.png';
+import boat2 from './assets/boats/boat2.png';
+import shipUrl from './assets/boats/ship.png';
+const loadImg = (u: string) => { const i = new Image(); i.src = u; return i; };
+const sprites = [boat0, boat1, boat2].map(loadImg);
+const shipImg = loadImg(shipUrl);
 const BASE_SH = 340;
 const INK = '#2d1e3e';
 const WATER_Y = 112, SAND_Y = 226, BASE_Y = 314, DECK_Y = 196;
@@ -262,20 +269,27 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
     branch(-6, -10, 1, 44, 2);
   }
 
-  function boat(c: Ctx, cx: number, cy: number, k: number, t: number, i: number, p: number) {
-    const by = cy + Math.sin(t * 1.6 + i * 2) * 1.8;
-    c.beginPath(); c.ellipse(cx, cy + 9, 30 * k, 3.2, 0, 0, TAU); c.fillStyle = 'rgba(255,255,255,.55)'; c.fill();
-    c.save(); c.translate(cx, by); c.rotate(Math.sin(t * 1.2 + i) * 0.045); c.scale(k, k);
-    person(c, -12, -6, 0.72, { shirt: '#f0a43a', hat: 'straw', arm: -0.7 });
-    rr(c, 2, -19, 15, 13, 3); paint(c, '#fff4da', 1.6);
-    rr(c, 5, -16, 9, 6, 1.5); paint(c, '#8fd3ee', 1.1);
-    c.beginPath(); c.moveTo(-26, -7); c.lineTo(27, -7); c.lineTo(19, 9); c.lineTo(-19, 9); c.closePath(); paint(c, '#e8553d', 2);
-    c.beginPath(); c.moveTo(-24.5, -3); c.lineTo(25.5, -3); c.lineTo(23.5, 1); c.lineTo(-22.5, 1); c.closePath(); c.fillStyle = '#fff4da'; c.fill();
-    c.restore();
+  function boat(c: Ctx, cx: number, cy: number, _k: number, t: number, i: number, p: number) {
+    const spr = sprites[i % 3];
+    const by = cy + Math.round(Math.sin(t * 1.6 + i * 2) * 1.2) * 2;   // whole pixels only, so the pixel art stays crisp
+    c.beginPath(); c.ellipse(cx, cy + 4, 34, 3.2, 0, 0, TAU); c.fillStyle = 'rgba(255,225,215,.5)'; c.fill();
+    // fisherman first, so the boat's near side covers his legs
+    person(c, cx + (i === 0 ? -2 : 16), by - 8, 0.66, { shirt: ['#f28c4a', '#58a85a', '#4fb3d6'][i % 3], hat: 'straw', arm: -0.7 });
+    if (spr.complete && spr.naturalWidth) {
+      c.imageSmoothingEnabled = false;
+      c.drawImage(spr, Math.round(cx - spr.naturalWidth), by - spr.naturalHeight * 2 + 6, spr.naturalWidth * 2, spr.naturalHeight * 2);
+    }
     if (p >= 0.78) {
       const u = (p - 0.78) / 0.22;
       fish(c, cx - 36 + u * 8, cy + 8 - Math.sin(u * Math.PI) * 20, -(u - 0.5) * 2.4, 0.8, '#ff9f43');
     }
+  }
+
+  function bigShip(c: Ctx, t: number) {
+    if (!(shipImg.complete && shipImg.naturalWidth)) return;
+    const y = WATER_Y - (dy - dyTop) * 0.35 + 30 + Math.round(Math.sin(t * 0.8) * 1) * 2;   // sits just below the horizon
+    c.imageSmoothingEnabled = false;
+    c.drawImage(shipImg, 70, y - shipImg.naturalHeight * 2, shipImg.naturalWidth * 2, shipImg.naturalHeight * 2);
   }
 
   function pier(c: Ctx, t: number, p: number) {
@@ -443,6 +457,7 @@ export function createScene(canvas: HTMLCanvasElement, s: GameState, onOpen: (id
     c.fillStyle = '#5b3a6b'; c.fillRect(0, 0, SW, dyTop + 2);
     c.save(); c.translate(0, dyTop); sky(c, t); sea(c, t, dy - dyTop); c.restore();
     c.save(); c.translate(0, dyTop + (dy - dyTop) * 0.35);
+    if (s.stations.dock.level >= CONFIG.maxLevel) bigShip(c, t);
     const boats = Math.min(3, Math.ceil(s.stations.dock.level / 4));
     const spots = [[262, 150, 1], [316, 180, 1.05], [226, 178, 0.95]];
     for (let i = 0; i < boats; i++) boat(c, spots[i][0], spots[i][1], spots[i][2], t, i, pd);
