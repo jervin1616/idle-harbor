@@ -86,3 +86,17 @@ button { font:inherit; }
 .big-btn.armed { background:var(--orange); box-shadow:0 0 0 3px var(--ink), inset 0 -4px 0 var(--orangeD), inset 0 3px 0 #ffb86b; }
 .big-btn:disabled { background:#8e9ab5; box-shadow:0 0 0 3px var(--ink), inset 0 -4px 0 #5d6a85; color:#e6e9f2; }
 textarea { width:100%; font:inherit; font-size:13px; padding:6px; border:3px solid var(--ink); background:#fff8e8; resize:none; margin:4px 0; }
+
+/* side buttons (boost, daily chest), ad screen */
+.side { position:absolute; right:12px; top:calc(78px + env(safe-area-inset-top,0px)); display:flex; flex-direction:column; gap:12px; }
+.sidebtn { position:relative; width:46px; padding:4px 0 3px; border:0; background:var(--ink); color:#fff1c9; display:flex; flex-direction:column; align-items:center; gap:2px;
+  box-shadow:0 0 0 3px #fff1c9, 0 0 0 6px var(--ink); font-size:11px; }
+.sidebtn small { font-size:11px; line-height:1; } .sidebtn .ico { width:22px; height:auto; }
+.sidebtn.on { background:var(--green); box-shadow:0 0 0 3px #fff1c9, 0 0 0 6px var(--ink); }
+.sidebtn.pulse { animation:pulse 1s infinite alternate; }
+@keyframes pulse { to { transform:scale(1.08); } }
+.sidebtn:active { transform:translateY(2px); }
+.adscreen { position:absolute; inset:0; background:#000d; display:flex; align-items:center; justify-content:center; z-index:30; }
+.adscreen.hidden { display:none; }
+.card button.alt { display:block; width:100%; margin-top:10px; background:var(--orange); box-shadow:0 0 0 3px var(--ink), inset 0 -4px 0 var(--orangeD), inset 0 3px 0 #ffb86b; }
+.card #collect, .card #cc { display:block; width:100%; }

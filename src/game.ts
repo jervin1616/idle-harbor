@@ -21,6 +21,9 @@ export interface GameState {
   playSeconds: number;
   achievements: string[];
   settings: { sound: boolean };
+  boostLeft: number;       // seconds of ad boost remaining (counts down only while playing)
+  lastDaily: number;       // ms timestamp of last daily chest
+  adsWatched: number;
   stations: Record<StationId, StationState>;
   lastSaved: number;       // ms timestamp
 }
@@ -33,7 +36,7 @@ const blankStations = (): Record<StationId, StationState> => {
 export function newState(now = Date.now()): GameState {
   return {
     version: 2, coins: 0, totalEarned: 0, runEarned: 0, pearls: 0, prestiges: 0, taps: 0, fishCaught: 0,
-    playSeconds: 0, achievements: [], settings: { sound: true }, lastSaved: now, stations: blankStations(),
+    playSeconds: 0, achievements: [], settings: { sound: true }, boostLeft: 0, lastDaily: 0, adsWatched: 0, lastSaved: now, stations: blankStations(),
   };
 }
 
@@ -81,7 +84,8 @@ export function incomePerCycle(id: StationId, level: number): number {
 
 export const pearlMultiplier = (s: GameState) => 1 + s.pearls * CONFIG.pearlBonus;
 export const badgeMultiplier = (s: GameState) => 1 + s.achievements.length * CONFIG.achievementBonus;
-export const globalMultiplier = (s: GameState) => pearlMultiplier(s) * badgeMultiplier(s);
+export const boostMultiplier = (s: GameState) => (s.boostLeft > 0 ? CONFIG.boostMultiplier : 1);
+export const globalMultiplier = (s: GameState) => pearlMultiplier(s) * badgeMultiplier(s) * boostMultiplier(s);
 
 /** What one cycle actually pays right now. */
 export function cycleIncome(s: GameState, id: StationId, level = s.stations[id].level): number {
@@ -179,7 +183,9 @@ export function applyOffline(s: GameState, awaySeconds: number) {
     const st = s.stations[c.id];
     if (!st.hasManager) { st.running = false; st.progress = 0; }
   }
+  const boost = s.boostLeft; s.boostLeft = 0;   // the ad boost only counts while you are playing
   const earned = credited > 0 ? tick(s, credited) : 0;
+  s.boostLeft = boost;
   return { credited, away: awaySeconds, earned };
 }
 
@@ -195,4 +201,20 @@ export function setSail(s: GameState): number {
   s.pearls += gain; s.prestiges++;
   s.coins = 0; s.runEarned = 0; s.stations = blankStations();
   return gain;
+}
+
+// ---------- daily chest ----------
+export const dailyReady = (s: GameState, now = Date.now()) => now - s.lastDaily >= CONFIG.dailyCooldownHours * 3600 * 1000;
+export const dailyMsLeft = (s: GameState, now = Date.now()) => Math.max(0, CONFIG.dailyCooldownHours * 3600 * 1000 - (now - s.lastDaily));
+/** Chest pays some minutes of the player's automatic income (never less than a floor). */
+export function dailyReward(s: GameState): number {
+  let perSec = 0;
+  for (const c of CONFIG.stations) if (s.stations[c.id].hasManager) perSec += incomePerSecond(s, c.id) / boostMultiplier(s);
+  return Math.floor(Math.max(CONFIG.dailyMinCoins, perSec * CONFIG.dailyIncomeSeconds));
+}
+export function claimDaily(s: GameState, doubled: boolean, now = Date.now()): number {
+  if (!dailyReady(s, now)) return 0;
+  const amount = dailyReward(s) * (doubled ? 2 : 1);
+  s.coins += amount; s.totalEarned += amount; s.runEarned += amount; s.lastDaily = now;
+  return amount;
 }

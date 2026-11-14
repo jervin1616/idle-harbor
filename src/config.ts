@@ -28,6 +28,11 @@ export const CONFIG = {
   // "Set Sail" (prestige): Pearls gained = floor((coins earned this voyage / divisor) ^ exponent)
   prestigeDivisor: 5e7,
   prestigeExponent: 0.5,
+  boostSeconds: 30 * 60,             // rewarded-ad income boost length
+  boostMultiplier: 2,
+  dailyCooldownHours: 20,            // daily chest
+  dailyIncomeSeconds: 600,           // chest pays this many seconds of your current income
+  dailyMinCoins: 100,
   buyAmounts: [1, 10, 25, 0],        // 0 = buy as many as you can afford
   stations: [
     { id: 'dock',   name: 'Fishing Dock',  baseCost: 10,    costGrowth: 1.12, baseIncome: 1,   cycleSeconds: 2, managerCost: 150 },

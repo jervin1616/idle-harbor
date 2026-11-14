@@ -20,7 +20,7 @@ export function parseSave(raw: string): GameState | null {
     if (!Array.isArray(out.achievements)) out.achievements = [];
     out.achievements = out.achievements.filter(x => typeof x === 'string');
     if (typeof out.runEarned !== 'number' || p.version === 1) out.runEarned = out.totalEarned || 0;
-    for (const k of ['coins', 'totalEarned', 'runEarned', 'pearls', 'prestiges', 'taps', 'fishCaught', 'playSeconds'] as const) {
+    for (const k of ['coins', 'totalEarned', 'runEarned', 'pearls', 'prestiges', 'taps', 'fishCaught', 'playSeconds', 'boostLeft', 'lastDaily', 'adsWatched'] as const) {
       if (!Number.isFinite(out[k]) || out[k] < 0) return null;
     }
     return out;

@@ -1,6 +1,6 @@
 import { CONFIG, FLEET_TIERS, FLEET_TIER_LEVELS, StationId, stationById } from './config';
 import {
-  GameState, buyManager, buyUpgrade, costForLevels, cycleIncome, incomePerSecond, maxAffordable, nextMilestone, prestigeGain, upgradeCost,
+  GameState, claimDaily, dailyReady, dailyReward, buyManager, buyUpgrade, costForLevels, cycleIncome, incomePerSecond, maxAffordable, nextMilestone, prestigeGain, upgradeCost,
 } from './game';
 import { Achievement } from './achievements';
 import { fmt, fmtDuration } from './format';
@@ -9,6 +9,7 @@ import { createScene } from './scene';
 import { makeIcon, stationIcon } from './icons';
 import { mountMenu } from './menu';
 import { sfx } from './audio';
+import { setAdPresenter, showRewarded } from './ads';
 
 export function mountUI(root: HTMLElement, s: GameState) {
   root.innerHTML = `
@@ -17,6 +18,10 @@ export function mountUI(root: HTMLElement, s: GameState) {
       <div class="hud"><div class="pill"><i class="coin"></i><span id="coins">0</span></div>
         <div class="rate" id="rate"></div></div>
       <button class="menubtn" id="menubtn" aria-label="Menu"><span id="mico"></span><i class="dot hidden" id="mdot"></i></button>
+      <div class="side">
+        <button class="sidebtn" id="boostbtn" aria-label="Income boost"><span id="bico"></span><small id="btxt">x2</small></button>
+        <button class="sidebtn pulse hidden" id="chestbtn" aria-label="Daily chest"><span id="cico"></span><small>Daily</small></button>
+      </div>
       <div class="toast hidden" id="toast"></div>
       <div class="hint" id="hint">Tap the sea to fish · tap a building or boat to upgrade it</div>
       <section class="sheet hidden" id="sheet">
@@ -27,12 +32,14 @@ export function mountUI(root: HTMLElement, s: GameState) {
         <div class="btns"><button class="up" id="sup"><span></span></button><button class="mgr" id="smgr"></button></div>
       </section>
       <div class="menu hidden" id="menu"></div>
+      <div class="adscreen hidden" id="adscreen"></div>
     </div>
     <div id="modal" class="modal hidden"></div>`;
 
   let openId: StationId | null = null;
   let buyAmt = 1;
   const $ = <T extends HTMLElement>(id: string) => root.querySelector<T>('#' + id)!;
+  const modal = $('modal');
   const sheet = $('sheet'), sicon = $('sicon'), stitle = $('stitle'), sinfo = $('sinfo'), ssub = $('ssub');
   const sup = $<HTMLButtonElement>('sup'), smgr = $<HTMLButtonElement>('smgr');
   const upLabel = sup.querySelector('span')!;
@@ -66,8 +73,38 @@ export function mountUI(root: HTMLElement, s: GameState) {
   const menu = mountMenu($('menu'), s, { toast, closed: () => { unseen = 0; } });
   $('menubtn').addEventListener('click', () => { open(null); unseen = 0; menu.open('badges'); sfx.tap(); });
 
+  $('bico').appendChild(makeIcon('bolt', 'ico menu-ico'));
+  $('cico').appendChild(makeIcon('chest', 'ico menu-ico'));
+  const adscreen = $('adscreen');
+  // Placeholder ad: swapped for a real rewarded ad in the Android build.
+  function playAd(): Promise<boolean> {
+    return new Promise(res => {
+      let n = 3; adscreen.classList.remove('hidden');
+      adscreen.innerHTML = `<div class="card"><p class="small">TEST AD</p><h2>Your ad plays here</h2><p class="big" id="adn">${n}</p><button id="adx" class="alt">Close (no reward)</button></div>`;
+      const done = (ok: boolean) => { clearInterval(iv); adscreen.classList.add('hidden'); res(ok); };
+      const iv = setInterval(() => { n--; if (n <= 0) done(true); else adscreen.querySelector('#adn')!.textContent = String(n); }, 1000);
+      adscreen.querySelector('#adx')!.addEventListener('click', () => done(false));
+    });
+  }
+  setAdPresenter(playAd);
+  $('boostbtn').addEventListener('click', async () => {
+    if (s.boostLeft > 0) { toast(`<b>Boost running</b><br><span class="small">x${CONFIG.boostMultiplier} income, ${fmtDuration(s.boostLeft)} left</span>`); return; }
+    if (await showRewarded()) { s.boostLeft = CONFIG.boostSeconds; s.adsWatched++; sfx.buy(); save(s); toast(`<b>x${CONFIG.boostMultiplier} income</b> for ${CONFIG.boostSeconds / 60} minutes!`); }
+  });
+  $('chestbtn').addEventListener('click', () => {
+    if (!dailyReady(s)) return;
+    const base = dailyReward(s);
+    modal.innerHTML = `<div class="card"><h2>Daily chest</h2><p class="big"><i class="coin"></i> +${fmt(base)}</p>
+      <button id="cc">Collect</button><button id="cd" class="alt">Watch ad: x2 (${fmt(base * 2)})</button></div>`;
+    modal.classList.remove('hidden');
+    modal.querySelector('#cc')!.addEventListener('click', () => { claimDaily(s, false); sfx.coin(); save(s); modal.classList.add('hidden'); });
+    modal.querySelector('#cd')!.addEventListener('click', async () => {
+      if (await showRewarded()) { s.adsWatched++; claimDaily(s, true); sfx.badge(); save(s); modal.classList.add('hidden'); }
+    });
+  });
+
   const scene = createScene($<HTMLCanvasElement>('scene'), s, id => { open(id); });
-  const coinsEl = $('coins'), rateEl = $('rate'), hint = $('hint'), modal = $('modal'), dot = $('mdot');
+  const coinsEl = $('coins'), rateEl = $('rate'), hint = $('hint'), dot = $('mdot'), btxt = $('btxt'), chestbtn = $('chestbtn'), boostbtn = $('boostbtn');
   let lastMenuRender = 0;
 
   function render(now: number) {
@@ -79,6 +116,9 @@ export function mountUI(root: HTMLElement, s: GameState) {
     rateEl.textContent = total > 0 ? `+${fmt(total)}/sec` : '';
     rateEl.classList.toggle('hidden', total <= 0);
     const gain = prestigeGain(s);
+    btxt.textContent = s.boostLeft > 0 ? fmtDuration(Math.ceil(s.boostLeft)) : 'x2';
+    boostbtn.classList.toggle('on', s.boostLeft > 0);
+    chestbtn.classList.toggle('hidden', !dailyReady(s));
     dot.classList.toggle('hidden', !(unseen > 0 || gain >= Math.max(1, Math.floor(s.pearls * 0.5))));
     if (menu.isOpen() && now - lastMenuRender > 0.4) { lastMenuRender = now; menu.render(); }
     if (!openId) return;
@@ -112,9 +152,12 @@ export function mountUI(root: HTMLElement, s: GameState) {
       <p>You were away ${fmtDuration(away)}.</p>
       <p class="big"><i class="coin"></i> +${fmt(earned)}</p>
       ${capped ? `<p class="small">Your crew works up to ${fmtDuration(CONFIG.offlineCapSeconds)} while you're away.</p>` : ''}
-      <button id="collect">Collect</button></div>`;
+      <button id="collect">Collect</button><button id="double" class="alt">Watch ad: double it</button></div>`;
     modal.classList.remove('hidden');
     modal.querySelector('#collect')!.addEventListener('click', () => { modal.classList.add('hidden'); sfx.coin(); });
+    modal.querySelector('#double')!.addEventListener('click', async () => {
+      if (await showRewarded()) { s.adsWatched++; s.coins += earned; s.totalEarned += earned; s.runEarned += earned; sfx.badge(); save(s); modal.classList.add('hidden'); toast(`<b>Doubled!</b> +${fmt(earned)} more`); }
+    });
   }
 
   function badgeUnlocked(list: Achievement[]) {

@@ -24,6 +24,7 @@ function frame(now: number) {
   last = now;
   tick(state, dt);
   state.playSeconds += Math.min(dt, 5);
+  if (state.boostLeft > 0) state.boostLeft = Math.max(0, state.boostLeft - Math.min(dt, 5));
   sinceCheck += dt;
   if (sinceCheck > 0.5) { sinceCheck = 0; ui.badgeUnlocked(checkAchievements(state)); }
   ui.render(now / 1000);

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../src/config';
 import {
   applyOffline, buyManager, buyUpgrade, costForLevels, cycleIncome, fleetTiers, globalMultiplier, incomePerCycle,
-  maxAffordable, newState, prestigeGain, setSail, startCycle, tap, tick, upgradeCost,
+  maxAffordable, claimDaily, dailyReady, dailyReward, newState, prestigeGain, setSail, startCycle, tap, tick, upgradeCost,
 } from '../src/game';
 import { checkAchievements, ACHIEVEMENTS } from '../src/achievements';
 import { exportSave, importSave, parseSave } from '../src/save';
@@ -79,6 +79,22 @@ describe('bonuses and prestige', () => {
     expect(s.stations.dock.level).toBe(0); expect(s.achievements).toEqual(['x']); expect(s.taps).toBe(7);
   });
   it('cannot set sail too early', () => { const s = newState(); s.runEarned = 1000; expect(setSail(s)).toBe(0); expect(s.prestiges).toBe(0); });
+});
+
+describe('ads and daily chest', () => {
+  it('boost doubles income and is ignored offline', () => {
+    const s = rich(); buyUpgrade(s, 'dock'); buyManager(s, 'dock');
+    s.boostLeft = 100; expect(cycleIncome(s, 'dock')).toBe(2);
+    const c0 = s.coins; applyOffline(s, 20); expect(s.coins - c0).toBe(10); expect(s.boostLeft).toBe(100);
+  });
+  it('daily chest pays once per cooldown, doubled with an ad', () => {
+    const s = newState(0); const t0 = 1e12;
+    expect(dailyReady(s, t0)).toBe(true);
+    expect(dailyReward(s)).toBe(100);
+    expect(claimDaily(s, true, t0)).toBe(200);
+    expect(dailyReady(s, t0 + 3600 * 1000)).toBe(false); expect(claimDaily(s, false, t0 + 3600 * 1000)).toBe(0);
+    expect(dailyReady(s, t0 + 21 * 3600 * 1000)).toBe(true);
+  });
 });
 
 describe('achievements', () => {
